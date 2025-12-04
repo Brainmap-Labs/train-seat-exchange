@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     
     # Database
-    MONGODB_URL: str = "mongodb://localhost:27017"
+    MONGODB_URL: str = "mongodb+srv://sanjayazad_db_user:XzDU2eFYxxRN0dwY@cluster0.hh5j5vb.mongodb.net/?appName=Cluster0"
     DATABASE_NAME: str = "train_seat_exchange"
     
     # Auth

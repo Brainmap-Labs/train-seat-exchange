@@ -1,4 +1,6 @@
 myenv
+venv
+test
 node_modules
 __pycache__
 *.pyc
