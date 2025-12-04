@@ -139,10 +139,11 @@ Messages (id, exchange_id, sender_id, content, timestamp)
 ```
 
 ### Tech Stack Recommendation
-- **Frontend**: Next.js 14 + TypeScript + Tailwind CSS
-- **Backend**: Node.js + Express/Fastify
-- **Database**: PostgreSQL + Prisma ORM
-- **OCR**: Google Cloud Vision API / AWS Textract / Tesseract.js
+- **Frontend**: React.Js + TypeScript + Tailwind CSS
+- **Backend**: Python FastAPI
+- **Exchange Logic**: Python
+- **Database**: MongoDB
+- **OCR/QR Scanner**: Opensource Hugging Face Models
 - **Auth**: Firebase Auth (phone OTP - crucial for India)
 - **Real-time**: Socket.io / Pusher for chat
 - **Hosting**: Vercel (frontend) + Railway/Render (backend)
