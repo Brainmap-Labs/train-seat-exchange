@@ -1,0 +1,7 @@
+myenv
+node_modules
+__pycache__
+*.pyc
+*.cpython
+*.cpython-*
+.env
