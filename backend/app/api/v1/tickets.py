@@ -49,10 +49,9 @@ class TicketResponse(BaseModel):
 
 @router.post("/upload")
 async def upload_ticket_image(
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user)
+    file: UploadFile = File(...)
 ):
-    """Upload ticket image for OCR processing"""
+    """Upload ticket image for OCR processing (no auth required for initial extraction)"""
     # Validate file type
     allowed_types = ["image/jpeg", "image/png", "image/jpg", "application/pdf"]
     if file.content_type not in allowed_types:
