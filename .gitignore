@@ -1,7 +1,9 @@
 myenv
-node_modules
+frontend/node_modules
 __pycache__
 *.pyc
 *.cpython
 *.cpython-*
 .env
+backend/venv
+myenv

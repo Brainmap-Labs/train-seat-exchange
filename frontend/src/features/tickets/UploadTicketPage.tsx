@@ -5,6 +5,7 @@ import { Upload, Image, FileText, Loader2, CheckCircle, AlertCircle } from 'luci
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
+import { ticketApi } from '@/services/api'
 
 type UploadStep = 'upload' | 'processing' | 'verify' | 'complete'
 
@@ -55,27 +56,43 @@ export function UploadTicketPage() {
     setStep('processing')
     setIsProcessing(true)
 
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    try {
+      // Create form data and upload to backend for OCR processing
+      const formData = new FormData()
+      formData.append('file', file)
 
-    // Mock extracted data
-    setExtractedData({
-      pnr: '4521678901',
-      trainNumber: '12301',
-      trainName: 'Howrah Rajdhani Express',
-      travelDate: '2025-01-15',
-      boardingStation: 'NDLS - New Delhi',
-      destinationStation: 'HWH - Howrah Junction',
-      classType: '3A',
-      passengers: [
-        { name: 'RAHUL KUMAR', age: 35, gender: 'M', coach: 'B2', seatNumber: 45, berthType: 'LB' },
-        { name: 'PRIYA KUMAR', age: 32, gender: 'F', coach: 'B2', seatNumber: 47, berthType: 'MB' },
-        { name: 'ARYAN KUMAR', age: 8, gender: 'M', coach: 'B3', seatNumber: 12, berthType: 'UB' },
-      ],
-    })
+      const response = await ticketApi.uploadImage(formData)
+      const data = response.data.data
 
-    setIsProcessing(false)
-    setStep('verify')
+      // Map backend response to frontend format
+      setExtractedData({
+        pnr: data.pnr || '',
+        trainNumber: data.train_number || '',
+        trainName: data.train_name || '',
+        travelDate: data.travel_date || '',
+        boardingStation: data.boarding_station || '',
+        destinationStation: data.destination_station || '',
+        classType: data.class_type || '',
+        passengers: (data.passengers || []).map((p: any) => ({
+          name: p.name || 'Unknown',
+          age: p.age || 0,
+          gender: p.gender || 'M',
+          coach: p.coach || '',
+          seatNumber: p.seat_number || 0,
+          berthType: p.berth_type || '',
+        })),
+      })
+
+      setStep('verify')
+    } catch (error: any) {
+      console.error('Failed to process ticket:', error)
+      // Fall back to upload step on error
+      setStep('upload')
+      const errorMessage = error.response?.data?.detail || error.message || 'Unknown error'
+      alert(`Failed to process ticket: ${errorMessage}`)
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   const handleConfirm = async () => {
@@ -167,23 +184,71 @@ export function UploadTicketPage() {
       {/* Verify Step */}
       {step === 'verify' && extractedData && (
         <div className="space-y-6">
+          {/* Warning for sample data */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex gap-3">
+            <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium text-blue-800">Edit your ticket details below</p>
+              <p className="text-sm text-blue-700">
+                The OCR system may have extracted sample data. Please update the fields with your actual ticket information.
+              </p>
+            </div>
+          </div>
+
           <Card>
             <CardHeader>
               <h3 className="font-display text-lg font-bold text-slate-900">
                 Verify Ticket Details
               </h3>
               <p className="text-sm text-slate-600">
-                Please verify the extracted information and correct if needed
+                Please verify and correct the information as needed
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid md:grid-cols-2 gap-4">
-                <Input label="PNR Number" value={extractedData.pnr} readOnly />
-                <Input label="Train" value={`${extractedData.trainNumber} - ${extractedData.trainName}`} readOnly />
-                <Input label="Travel Date" value={extractedData.travelDate} readOnly />
-                <Input label="Class" value={extractedData.classType} readOnly />
-                <Input label="From" value={extractedData.boardingStation} readOnly />
-                <Input label="To" value={extractedData.destinationStation} readOnly />
+                <Input 
+                  label="PNR Number" 
+                  value={extractedData.pnr} 
+                  onChange={(e) => setExtractedData({...extractedData, pnr: e.target.value})}
+                  placeholder="Enter 10-digit PNR"
+                />
+                <Input 
+                  label="Train Number" 
+                  value={extractedData.trainNumber}
+                  onChange={(e) => setExtractedData({...extractedData, trainNumber: e.target.value})}
+                  placeholder="e.g., 12301"
+                />
+                <Input 
+                  label="Train Name" 
+                  value={extractedData.trainName}
+                  onChange={(e) => setExtractedData({...extractedData, trainName: e.target.value})}
+                  placeholder="e.g., Rajdhani Express"
+                />
+                <Input 
+                  label="Travel Date" 
+                  value={extractedData.travelDate}
+                  onChange={(e) => setExtractedData({...extractedData, travelDate: e.target.value})}
+                  placeholder="YYYY-MM-DD"
+                  type="date"
+                />
+                <Input 
+                  label="Class" 
+                  value={extractedData.classType}
+                  onChange={(e) => setExtractedData({...extractedData, classType: e.target.value})}
+                  placeholder="e.g., 3A, SL, 2A"
+                />
+                <Input 
+                  label="From Station" 
+                  value={extractedData.boardingStation}
+                  onChange={(e) => setExtractedData({...extractedData, boardingStation: e.target.value})}
+                  placeholder="e.g., NDLS - New Delhi"
+                />
+                <Input 
+                  label="To Station" 
+                  value={extractedData.destinationStation}
+                  onChange={(e) => setExtractedData({...extractedData, destinationStation: e.target.value})}
+                  placeholder="e.g., HWH - Howrah"
+                />
               </div>
             </CardContent>
           </Card>
@@ -195,16 +260,87 @@ export function UploadTicketPage() {
               </h3>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {extractedData.passengers.map((p, index) => (
-                  <div key={index} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3">
-                    <div>
-                      <p className="font-medium">{p.name}</p>
-                      <p className="text-sm text-slate-500">{p.age}yrs • {p.gender === 'M' ? 'Male' : 'Female'}</p>
+                  <div key={index} className="bg-slate-50 rounded-lg p-4 space-y-3">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <Input
+                        label="Name"
+                        value={p.name}
+                        onChange={(e) => {
+                          const newPassengers = [...extractedData.passengers]
+                          newPassengers[index] = {...p, name: e.target.value}
+                          setExtractedData({...extractedData, passengers: newPassengers})
+                        }}
+                        placeholder="Passenger name"
+                      />
+                      <Input
+                        label="Age"
+                        type="number"
+                        value={p.age}
+                        onChange={(e) => {
+                          const newPassengers = [...extractedData.passengers]
+                          newPassengers[index] = {...p, age: parseInt(e.target.value) || 0}
+                          setExtractedData({...extractedData, passengers: newPassengers})
+                        }}
+                        placeholder="Age"
+                      />
+                      <Input
+                        label="Coach"
+                        value={p.coach}
+                        onChange={(e) => {
+                          const newPassengers = [...extractedData.passengers]
+                          newPassengers[index] = {...p, coach: e.target.value}
+                          setExtractedData({...extractedData, passengers: newPassengers})
+                        }}
+                        placeholder="e.g., B2"
+                      />
+                      <Input
+                        label="Seat"
+                        type="number"
+                        value={p.seatNumber}
+                        onChange={(e) => {
+                          const newPassengers = [...extractedData.passengers]
+                          newPassengers[index] = {...p, seatNumber: parseInt(e.target.value) || 0}
+                          setExtractedData({...extractedData, passengers: newPassengers})
+                        }}
+                        placeholder="e.g., 45"
+                      />
                     </div>
-                    <div className="text-right">
-                      <p className="font-mono font-bold">{p.coach}/{p.seatNumber}</p>
-                      <p className="text-sm text-slate-500">{p.berthType}</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Gender</label>
+                        <select
+                          value={p.gender}
+                          onChange={(e) => {
+                            const newPassengers = [...extractedData.passengers]
+                            newPassengers[index] = {...p, gender: e.target.value}
+                            setExtractedData({...extractedData, passengers: newPassengers})
+                          }}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          <option value="M">Male</option>
+                          <option value="F">Female</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Berth Type</label>
+                        <select
+                          value={p.berthType}
+                          onChange={(e) => {
+                            const newPassengers = [...extractedData.passengers]
+                            newPassengers[index] = {...p, berthType: e.target.value}
+                            setExtractedData({...extractedData, passengers: newPassengers})
+                          }}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          <option value="LB">Lower Berth (LB)</option>
+                          <option value="MB">Middle Berth (MB)</option>
+                          <option value="UB">Upper Berth (UB)</option>
+                          <option value="SL">Side Lower (SL)</option>
+                          <option value="SU">Side Upper (SU)</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
                 ))}
