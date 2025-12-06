@@ -1,17 +1,200 @@
 import re
-from typing import Dict, Any, Optional
+import os
+from typing import Dict, Any, Optional, List
 from io import BytesIO
 from PIL import Image
 
 class OCRService:
-    """Service for extracting ticket data from images using OCR"""
+    """Service for extracting ticket data from images using OCR
     
-    def __init__(self):
-        self.pnr_pattern = re.compile(r'\b\d{10}\b')
-        self.train_pattern = re.compile(r'\b(\d{5})\s+([A-Z\s]+(?:EXPRESS|RAJDHANI|SHATABDI|DURONTO|MAIL|EXP)?)\b', re.IGNORECASE)
-        self.seat_pattern = re.compile(r'\b([A-Z]\d{1,2})/(\d{1,2})/(LB|MB|UB|SL|SU)\b', re.IGNORECASE)
-        self.date_pattern = re.compile(r'\b(\d{1,2}[-/]\w{3}[-/]\d{2,4})\b')
-        self.station_pattern = re.compile(r'\b([A-Z]{2,5})\s*[-–]\s*([A-Z\s]+)\b')
+    Supports multiple OCR methods in priority order:
+    1. Hugging Face models (recommended - better accuracy)
+    2. Tesseract OCR (fallback)
+    3. Mock data (development only)
+    """
+    
+    def __init__(self, tesseract_cmd: Optional[str] = None, 
+                 huggingface_model: Optional[str] = None,
+                 use_huggingface: bool = True):
+        # PNR patterns - multiple formats
+        # Format 1: "PNR: 2647755663" or "PNR:2215801342"
+        # Format 2: "2647755663" (standalone 10 digits)
+        self.pnr_patterns = [
+            re.compile(r'PNR\s*:?\s*(\d{10})', re.IGNORECASE),
+            re.compile(r'\b(\d{10})\b'),  # Standalone 10 digits
+        ]
+        
+        # Train number and name patterns - multiple formats
+        # Format 1: "12556/GORAKHDHAM EXP" or "12556 GORAKHDHAM EXP"
+        # Format 2: "ANVT GKP EXP (15058)" or "15058"
+        self.train_patterns = [
+            re.compile(r'(\d{4,5})\s*[/-]?\s*([A-Z\s]+(?:EXPRESS|RAJDHANI|SHATABDI|DURONTO|MAIL|EXP|GKP|ANVT)?)', re.IGNORECASE),
+            re.compile(r'\((\d{4,5})\)'),  # Train number in parentheses
+            re.compile(r'\b(\d{4,5})\b'),  # Standalone train number
+        ]
+        self.train_name_patterns = [
+            re.compile(r'([A-Z\s]+(?:EXPRESS|RAJDHANI|SHATABDI|DURONTO|MAIL|EXP|GKP))\s*\(?\d{4,5}\)?', re.IGNORECASE),
+            re.compile(r'([A-Z\s]{3,}(?:EXPRESS|RAJDHANI|SHATABDI|DURONTO|MAIL|EXP))', re.IGNORECASE),
+        ]
+        
+        # Seat/Coach patterns - multiple formats
+        # Format 1: "CNF/B2/21" or "CNF/B2/21/LB"
+        # Format 2: "CNF/A2/31/LB" or "B2/21/LB"
+        # Format 3: "CNF B2/21" or "B2 21"
+        # Handle OCR errors: "dking Statu" (Booking Status), "joking Status" (Current Status)
+        self.seat_patterns = [
+            # Pattern for "CNF/B2/21" or "CNF/B2/21/LB" or "CNF/A2/31/LB"
+            re.compile(r'(?:CNF|WL|RAC|CAN)\s*[/-]?\s*([A-Z]\d{1,2})\s*[/-]?\s*(\d{1,3})\s*[/-]?\s*(LB|MB|UB|SL|SU)?', re.IGNORECASE),
+            # Pattern for "B2/21/LB" or "A2/31/LB" (without status prefix)
+            re.compile(r'\b([A-Z]\d{1,2})\s*[/-]?\s*(\d{1,3})\s*[/-]?\s*(LB|MB|UB|SL|SU)\b', re.IGNORECASE),
+            # Pattern near "Booking Status" or "Current Status" (with OCR error tolerance)
+            re.compile(r'(?:Booking|Current|dking|joking)\s+(?:Status|Statu)\s*:?\s*(?:CNF|WL|RAC)?\s*[/-]?\s*([A-Z]\d{1,2})\s*[/-]?\s*(\d{1,3})\s*[/-]?\s*(LB|MB|UB|SL|SU)?', re.IGNORECASE),
+            # Pattern for "B2/21" or "A2/31" (minimal format)
+            re.compile(r'\b([A-Z]\d{1,2})\s*[/-]\s*(\d{1,3})\b', re.IGNORECASE),
+        ]
+        
+        # Date patterns - multiple formats
+        # Format 1: "06-Sep-2024" or "14 AUG WEDNESDAY 2024"
+        # Format 2: "14 Aug 2024" or "06/09/2024"
+        self.date_patterns = [
+            re.compile(r'\b(\d{1,2}[-/]\w{3,}[-/]\d{2,4})\b', re.IGNORECASE),
+            re.compile(r'\b(\d{1,2}\s+\w{3,}\s+\d{2,4})\b', re.IGNORECASE),
+            re.compile(r'(?:Departure|Arrival|Date|Travel Date)\s*:?\s*(\d{1,2}[-/]\w{3,}[-/]\d{2,4})', re.IGNORECASE),
+        ]
+        
+        # Station patterns - multiple formats
+        # Format 1: "NEW DELHI (NDLS)" or "Anand Vihar Trm (ANVT)"
+        # Format 2: "NDLS - NEW DELHI" or "NDLS > NEW DELHI"
+        # Format 3: "ANVT TO KLD" or "FROM ANVT TO KLD"
+        # Format 4: "From: NDLS - NEW DELHI" or "To: HWH - HOWRAH"
+        self.station_patterns = [
+            re.compile(r'([A-Z\s]+)\s*\(([A-Z]{2,5})\)', re.IGNORECASE),  # "NEW DELHI (NDLS)" or "Anand Vihar Trm (ANVT)"
+            re.compile(r'([A-Z]{2,5})\s*[-–>]\s*([A-Z\s]+)', re.IGNORECASE),  # "NDLS - NEW DELHI" or "NDLS > NEW DELHI"
+            re.compile(r'([A-Z]{2,5})\s+(?:TO|FROM)\s+([A-Z]{2,5})', re.IGNORECASE),  # "ANVT TO KLD"
+            re.compile(r'(?:From|Boarding|To|Destination)\s*:?\s*([A-Z\s]+)\s*\(([A-Z]{2,5})\)', re.IGNORECASE),
+            # Pattern for "NEW DELHI (NDLS) > KHALILABAD (KLD)" format
+            re.compile(r'([A-Z\s]+)\s*\(([A-Z]{2,5})\)\s*[-–>]\s*([A-Z\s]+)\s*\(([A-Z]{2,5})\)', re.IGNORECASE),
+        ]
+        
+        # Class patterns
+        self.class_patterns = [
+            re.compile(r'(?:Class|CLASS)\s*:?\s*(1A|2A|3A|SL|CC|EC|2S|AC\s*3\s*Tier|AC\s*2\s*Tier)', re.IGNORECASE),
+            re.compile(r'\b(1A|2A|3A|SL|CC|EC|2S)\b', re.IGNORECASE),
+            re.compile(r'AC\s*3\s*Tier\s*\(?(3A)\)?', re.IGNORECASE),
+            re.compile(r'AC\s*2\s*Tier\s*\(?(2A)\)?', re.IGNORECASE),
+        ]
+        
+        # Passenger name patterns - multiple formats
+        # Format 1: "1. Gourav Chutani 33 MALE" or "1. RAHUL KUMAR M/35"
+        # Format 2: "NEELAM AZAD\nFemale| 36 yrs"
+        # Format 3: "Name: Gourav Chutani"
+        self.passenger_name_patterns = [
+            re.compile(r'(?:^\d+\.|#\s*\d+)\s+([A-Z][A-Z\s]{2,30}?)\s+(\d{1,3})\s+(MALE|FEMALE|M|F|MALE|FEMALE)', re.IGNORECASE | re.MULTILINE),
+            re.compile(r'(?:^\d+\.|#\s*\d+)\s+([A-Z][A-Z\s]{2,30}?)\s+(\d{1,3})\s*[/-]?\s*(M|F|MALE|FEMALE)', re.IGNORECASE | re.MULTILINE),
+            re.compile(r'([A-Z][A-Z\s]{2,30}?)\s*(?:Male|Female|M|F)\s*\|\s*(\d{1,3})\s*yrs?', re.IGNORECASE),
+            re.compile(r'([A-Z][A-Z\s]{2,30}?)\s*(?:Male|Female|M|F)', re.IGNORECASE),
+        ]
+        
+        # Passenger info patterns - combined name, age, gender
+        # Format 1: "1. Gourav Chutani 33 MALE CNF/B2/21"
+        # Format 2: "NEELAM AZAD\nFemale| 36 yrs\n...\nCNF/A2/31/LB"
+        self.passenger_info_patterns = [
+            # Pattern for "1. Name Age Gender Status/Coach/Seat"
+            re.compile(r'(?:^\d+\.|#\s*\d+)\s+([A-Z][A-Z\s]{2,30}?)\s+(\d{1,3})\s+(MALE|FEMALE|M|F)\s+(?:CNF|WL|RAC|CAN)\s*[/-]?\s*([A-Z]\d{1,2})\s*[/-]?\s*(\d{1,3})\s*[/-]?\s*(LB|MB|UB|SL|SU)?', re.IGNORECASE | re.MULTILINE),
+            # Pattern for "Name\nGender| Age yrs\n...\nStatus/Coach/Seat/Berth"
+            re.compile(r'([A-Z][A-Z\s]{2,30}?)\s*(?:Male|Female|M|F)\s*\|\s*(\d{1,3})\s*yrs?', re.IGNORECASE),
+        ]
+        
+        self.huggingface_model = huggingface_model
+        self.use_huggingface = use_huggingface
+        self.huggingface_available = False
+        self.tesseract_available = False
+        self.ocr_pipeline = None  # Will be initialized if Hugging Face is available
+        
+        # Check OCR availability
+        if self.use_huggingface and self.huggingface_model:
+            self.huggingface_available = self._check_huggingface()
+        
+        if not self.huggingface_available:
+            self.tesseract_available = self._check_tesseract(tesseract_cmd)
+    
+    def _check_huggingface(self) -> bool:
+        """Check if Hugging Face transformers are available and model can be loaded"""
+        try:
+            from transformers import pipeline
+            import torch
+            
+            # Try to initialize the OCR pipeline
+            try:
+                print(f"🤖 Loading Hugging Face OCR model: {self.huggingface_model}")
+                print("   This may take a few minutes on first run (downloading model)...")
+                
+                # Determine device (GPU if available, else CPU)
+                device = 0 if torch.cuda.is_available() else -1
+                if device == 0:
+                    print("   Using GPU acceleration")
+                else:
+                    print("   Using CPU (slower but works)")
+                
+                # Initialize pipeline with appropriate device
+                self.ocr_pipeline = pipeline(
+                    "image-to-text",
+                    model=self.huggingface_model,
+                    device=device
+                )
+                print("✅ Hugging Face OCR model loaded successfully")
+                return True
+            except Exception as e:
+                error_msg = str(e)
+                if "out of memory" in error_msg.lower() or "cuda" in error_msg.lower():
+                    print(f"⚠️  GPU memory issue or CUDA error: {e}")
+                    print("   Trying CPU mode...")
+                    try:
+                        self.ocr_pipeline = pipeline(
+                            "image-to-text",
+                            model=self.huggingface_model,
+                            device=-1  # Force CPU
+                        )
+                        print("✅ Hugging Face OCR model loaded on CPU")
+                        return True
+                    except Exception as e2:
+                        print(f"⚠️  Failed to load on CPU: {e2}")
+                else:
+                    print(f"⚠️  Failed to load Hugging Face model {self.huggingface_model}: {e}")
+                print("   Falling back to Tesseract OCR")
+                return False
+        except ImportError:
+            print("⚠️  transformers or torch not installed. Install with: pip install transformers torch")
+            return False
+    
+    def _check_tesseract(self, tesseract_cmd: Optional[str] = None) -> bool:
+        """Check if Tesseract OCR is available and configure it if needed"""
+        try:
+            import pytesseract
+            
+            # Set custom Tesseract command if provided
+            if tesseract_cmd:
+                pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+            
+            # Try to get Tesseract version to verify it's working
+            try:
+                pytesseract.get_tesseract_version()
+                return True
+            except Exception as e:
+                error_msg = str(e)
+                if "tesseract is not installed" in error_msg.lower() or "not in your path" in error_msg.lower():
+                    print("⚠️  Tesseract OCR is not installed or not in your PATH.")
+                    print("   Please install Tesseract OCR:")
+                    print("   - macOS: brew install tesseract")
+                    print("   - Linux: sudo apt-get install tesseract-ocr")
+                    print("   - Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki")
+                    print("   See README.md for more information.")
+                else:
+                    print(f"⚠️  Tesseract OCR error: {error_msg}")
+                return False
+        except ImportError:
+            print("⚠️  pytesseract is not installed. Install it with: pip install pytesseract")
+            return False
     
     async def extract_ticket_data(self, file_content: bytes, content_type: str) -> Dict[str, Any]:
         """
@@ -34,39 +217,116 @@ class OCRService:
         return self._parse_ticket_text(text)
     
     async def _extract_from_image(self, image_bytes: bytes) -> str:
-        """Extract text from image using OCR"""
+        """Extract text from image using OCR (tries Hugging Face first, then Tesseract)"""
+        image = Image.open(BytesIO(image_bytes))
+        
+        # Try Hugging Face OCR first (better accuracy)
+        if self.huggingface_available:
+            try:
+                text = await self._extract_with_huggingface(image)
+                if text and len(text.strip()) > 10:  # Basic validation
+                    return text
+                else:
+                    print("⚠️  Hugging Face OCR returned empty/insufficient text. Falling back to Tesseract...")
+            except Exception as e:
+                print(f"⚠️  Hugging Face OCR error: {e}. Falling back to Tesseract...")
+        
+        # Fallback to Tesseract
+        if self.tesseract_available:
+            try:
+                import pytesseract
+                text = pytesseract.image_to_string(image)
+                return text
+            except ImportError:
+                print("⚠️  pytesseract is not installed. Using mock data.")
+                return self._get_mock_ticket_text()
+            except Exception as e:
+                error_msg = str(e)
+                if "tesseract is not installed" in error_msg.lower() or "not in your path" in error_msg.lower():
+                    print("❌ OCR Error: tesseract is not installed or it's not in your PATH.")
+                    print("   See README file for more information.")
+                else:
+                    print(f"❌ OCR Error: {error_msg}")
+                return self._get_mock_ticket_text()
+        
+        # Final fallback to mock data
+        print("⚠️  No OCR method available. Using mock data.")
+        return self._get_mock_ticket_text()
+    
+    async def _extract_with_huggingface(self, image: Image.Image) -> str:
+        """Extract text using Hugging Face OCR model"""
+        if not self.ocr_pipeline:
+            raise Exception("Hugging Face OCR pipeline not initialized")
+        
         try:
-            # Try using pytesseract if available
-            import pytesseract
-            image = Image.open(BytesIO(image_bytes))
-            text = pytesseract.image_to_string(image)
-            return text
-        except ImportError:
-            # Fallback: Return mock data for development
-            return self._get_mock_ticket_text()
+            # Convert PIL image to RGB if needed
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # Run OCR pipeline
+            results = self.ocr_pipeline(image)
+            
+            # Handle different response formats
+            if isinstance(results, list):
+                # Some models return list of dicts with 'generated_text' key
+                if results and isinstance(results[0], dict):
+                    text = ' '.join([item.get('generated_text', '') for item in results if item.get('generated_text')])
+                else:
+                    # Some models return list of strings
+                    text = ' '.join([str(item) for item in results if item])
+            elif isinstance(results, dict):
+                text = results.get('generated_text', '') or results.get('text', '')
+            else:
+                text = str(results)
+            
+            return text.strip()
         except Exception as e:
-            print(f"OCR Error: {e}")
-            return self._get_mock_ticket_text()
+            print(f"Error in Hugging Face OCR: {e}")
+            raise
     
     async def _extract_from_pdf(self, pdf_bytes: bytes) -> str:
-        """Extract text from PDF"""
+        """Extract text from PDF (tries Hugging Face first, then Tesseract)"""
         try:
             from pdf2image import convert_from_bytes
-            import pytesseract
             
             images = convert_from_bytes(pdf_bytes)
             text = ""
+            
             for image in images:
-                text += pytesseract.image_to_string(image) + "\n"
-            return text
-        except ImportError:
+                # Try Hugging Face first
+                if self.huggingface_available:
+                    try:
+                        page_text = await self._extract_with_huggingface(image)
+                        if page_text and len(page_text.strip()) > 10:
+                            text += page_text + "\n"
+                            continue
+                    except Exception as e:
+                        print(f"⚠️  Hugging Face OCR error on PDF page: {e}")
+                
+                # Fallback to Tesseract
+                if self.tesseract_available:
+                    try:
+                        import pytesseract
+                        text += pytesseract.image_to_string(image) + "\n"
+                    except Exception as e:
+                        print(f"⚠️  Tesseract error on PDF page: {e}")
+            
+            if text.strip():
+                return text
+            
+            print("⚠️  No OCR method available for PDF. Using mock data.")
+            return self._get_mock_ticket_text()
+            
+        except ImportError as e:
+            print(f"⚠️  Missing dependency: {e}. Using mock data.")
             return self._get_mock_ticket_text()
         except Exception as e:
-            print(f"PDF OCR Error: {e}")
+            error_msg = str(e)
+            print(f"❌ PDF OCR Error: {error_msg}")
             return self._get_mock_ticket_text()
     
     def _parse_ticket_text(self, text: str) -> Dict[str, Any]:
-        """Parse ticket text and extract structured data"""
+        """Parse ticket text and extract structured data from multiple OCR formats"""
         result = {
             "pnr": None,
             "train_number": None,
@@ -78,48 +338,355 @@ class OCRService:
             "passengers": [],
             "confidence": 0.0,
         }
+               
         
-        # Extract PNR
-        pnr_match = self.pnr_pattern.search(text)
-        if pnr_match:
-            result["pnr"] = pnr_match.group()
-            result["confidence"] += 0.2
+        # Extract PNR - try multiple patterns
+        for pattern in self.pnr_patterns:
+            pnr_match = pattern.search(text)
+            if pnr_match:
+                pnr = pnr_match.group(1) if pnr_match.groups() else pnr_match.group()
+                if len(pnr) == 10 and pnr.isdigit():
+                    result["pnr"] = pnr
+                    result["confidence"] += 0.2
+                    break
         
-        # Extract Train Number and Name
-        train_match = self.train_pattern.search(text)
-        if train_match:
-            result["train_number"] = train_match.group(1)
-            result["train_name"] = train_match.group(2).strip()
-            result["confidence"] += 0.2
+        # Extract Train Number and Name - try multiple patterns
+        train_number = None
+        train_name = None
         
-        # Extract Date
-        date_match = self.date_pattern.search(text)
-        if date_match:
-            result["travel_date"] = date_match.group(1)
+        # Try to find train number first
+        for pattern in self.train_patterns:
+            train_match = pattern.search(text)
+            if train_match:
+                train_number = train_match.group(1) if train_match.groups() else train_match.group()
+                if train_number and len(train_number) >= 4:
+                    result["train_number"] = train_number
+                    result["confidence"] += 0.1
+                    break
+        
+        # Try to find train name
+        for pattern in self.train_name_patterns:
+            name_match = pattern.search(text)
+            if name_match:
+                train_name = name_match.group(1).strip()
+                if train_name and len(train_name) > 3:
+                    result["train_name"] = train_name
+                    result["confidence"] += 0.1
+                    break
+        
+        # If we have train number but no name, try to extract from context
+        if result["train_number"] and not result["train_name"]:
+            # Look for pattern like "12556/GORAKHDHAM EXP" or "12556 GORAKHDHAM EXP"
+            train_context = re.search(rf'{re.escape(result["train_number"])}\s*[/-]?\s*([A-Z\s]{{5,}}(?:EXP|EXPRESS|RAJDHANI|SHATABDI|DURONTO|MAIL|GKP))', text, re.IGNORECASE)
+            if train_context:
+                result["train_name"] = train_context.group(1).strip()
+                result["confidence"] += 0.05
+            else:
+                # Try reverse: "GKP EXP (15058)" format
+                train_context = re.search(rf'([A-Z\s]{{3,}}(?:EXP|EXPRESS|RAJDHANI|SHATABDI|DURONTO|MAIL|GKP))\s*\(?{re.escape(result["train_number"])}\)?', text, re.IGNORECASE)
+                if train_context:
+                    result["train_name"] = train_context.group(1).strip()
+                    result["confidence"] += 0.05
+        
+        # Extract Date - try multiple patterns
+        for pattern in self.date_patterns:
+            date_match = pattern.search(text)
+            if date_match:
+                date_str = date_match.group(1) if date_match.groups() else date_match.group()
+                # Normalize date format
+                date_str = self._normalize_date(date_str)
+                if date_str:
+                    result["travel_date"] = date_str
+                    result["confidence"] += 0.1
+                    break
+        
+        # Extract Stations - try multiple patterns
+        stations = self._extract_stations(text)
+        if stations.get("boarding"):
+            result["boarding_station"] = stations["boarding"]
+            result["confidence"] += 0.1
+        if stations.get("destination"):
+            result["destination_station"] = stations["destination"]
             result["confidence"] += 0.1
         
-        # Extract Class
-        class_patterns = ["1A", "2A", "3A", "SL", "CC", "EC", "2S"]
-        for cls in class_patterns:
-            if cls in text.upper():
-                result["class_type"] = cls
-                result["confidence"] += 0.1
-                break
+        # Extract Class - try multiple patterns
+        for pattern in self.class_patterns:
+            class_match = pattern.search(text)
+            if class_match:
+                class_type = class_match.group(1) if class_match.groups() else class_match.group()
+                # Normalize class type
+                class_type = self._normalize_class(class_type)
+                if class_type:
+                    result["class_type"] = class_type
+                    result["confidence"] += 0.1
+                    break
         
-        # Extract Seats
-        seats = self.seat_pattern.findall(text)
-        for coach, seat_num, berth in seats:
-            result["passengers"].append({
-                "coach": coach.upper(),
-                "seat_number": int(seat_num),
-                "berth_type": berth.upper(),
-            })
-            result["confidence"] += 0.05
+        # Extract Passengers/Seats - try multiple patterns
+        passengers = self._extract_passengers(text)
+        result["passengers"] = passengers
+        if passengers:
+            result["confidence"] += min(len(passengers) * 0.05, 0.3)
         
         # Cap confidence at 1.0
         result["confidence"] = min(result["confidence"], 1.0)
         
         return result
+    
+    def _normalize_date(self, date_str: str) -> Optional[str]:
+        """Normalize date string to standard format"""
+        if not date_str:
+            return None
+        
+        # Try to parse and normalize common date formats
+        # "06-Sep-2024" -> "06-Sep-2024"
+        # "14 AUG 2024" -> "14-Aug-2024"
+        # "14 Aug Wednesday 2024" -> "14-Aug-2024"
+        
+        # Remove day names
+        date_str = re.sub(r'\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b', '', date_str, flags=re.IGNORECASE)
+        date_str = date_str.strip()
+        
+        # Normalize month abbreviations
+        month_map = {
+            'jan': 'Jan', 'feb': 'Feb', 'mar': 'Mar', 'apr': 'Apr',
+            'may': 'May', 'jun': 'Jun', 'jul': 'Jul', 'aug': 'Aug',
+            'sep': 'Sep', 'oct': 'Oct', 'nov': 'Nov', 'dec': 'Dec'
+        }
+        
+        for abbrev, full in month_map.items():
+            date_str = re.sub(rf'\b{abbrev}\b', full, date_str, flags=re.IGNORECASE)
+        
+        return date_str if date_str else None
+    
+    def _normalize_class(self, class_str: str) -> Optional[str]:
+        """Normalize class string to standard format"""
+        if not class_str:
+            return None
+        
+        class_str = class_str.upper().strip()
+        
+        # Handle "AC 3 Tier" -> "3A"
+        if 'AC 3 TIER' in class_str or 'AC3' in class_str:
+            return '3A'
+        if 'AC 2 TIER' in class_str or 'AC2' in class_str:
+            return '2A'
+        if 'AC 1 TIER' in class_str or 'AC1' in class_str:
+            return '1A'
+        
+        # Standard class codes
+        if class_str in ['1A', '2A', '3A', 'SL', 'CC', 'EC', '2S']:
+            return class_str
+        
+        return None
+    
+    def _extract_stations(self, text: str) -> Dict[str, Optional[str]]:
+        """Extract boarding and destination stations"""
+        stations = {"boarding": None, "destination": None}
+        
+        # Try different patterns
+        for pattern in self.station_patterns:
+            matches = list(pattern.finditer(text))
+            
+            # Special handling for "NEW DELHI (NDLS) > KHALILABAD (KLD)" format (4 groups)
+            if matches and len(matches[0].groups()) == 4:
+                match = matches[0]
+                boarding_name = match.group(1).strip()
+                boarding_code = match.group(2).upper()
+                dest_name = match.group(3).strip()
+                dest_code = match.group(4).upper()
+                stations["boarding"] = f"{boarding_code} - {boarding_name}"
+                stations["destination"] = f"{dest_code} - {dest_name}"
+                break
+            
+            # Handle 2-group patterns
+            station_list = []
+            for match in matches:
+                if match.groups():
+                    if len(match.groups()) == 2:
+                        # Format: "NEW DELHI (NDLS)" or "NDLS - NEW DELHI"
+                        if match.group(2).isupper() and len(match.group(2)) >= 2:  # Station code
+                            code = match.group(2).upper()
+                            name = match.group(1).strip()
+                            station_list.append(f"{code} - {name}")
+                        elif match.group(1).isupper() and len(match.group(1)) >= 2:  # Code first format
+                            code = match.group(1).upper()
+                            name = match.group(2).strip()
+                            station_list.append(f"{code} - {name}")
+                        else:
+                            station_list.append(match.group(0))
+                    else:
+                        station_list.append(match.group(0))
+                else:
+                    station_list.append(match.group(0))
+            
+            if len(station_list) >= 2:
+                stations["boarding"] = station_list[0]
+                stations["destination"] = station_list[1]
+                break
+            elif len(station_list) == 1 and not stations["boarding"]:
+                stations["boarding"] = station_list[0]
+        
+        # Try to find "FROM" and "TO" keywords separately
+        if not stations["boarding"] or not stations["destination"]:
+            from_match = re.search(r'(?:From|Boarding)\s*:?\s*([A-Z\s]+)\s*\(([A-Z]{2,5})\)', text, re.IGNORECASE)
+            to_match = re.search(r'(?:To|Destination)\s*:?\s*([A-Z\s]+)\s*\(([A-Z]{2,5})\)', text, re.IGNORECASE)
+            
+            if from_match:
+                stations["boarding"] = f"{from_match.group(2).upper()} - {from_match.group(1).strip()}"
+            if to_match:
+                stations["destination"] = f"{to_match.group(2).upper()} - {to_match.group(1).strip()}"
+        
+        # Fallback: Look for "FROM ... TO" pattern with codes only
+        if not stations["boarding"] or not stations["destination"]:
+            from_to_match = re.search(r'([A-Z]{2,5})\s+(?:TO|>|FROM)\s+([A-Z]{2,5})', text, re.IGNORECASE)
+            if from_to_match:
+                boarding_code = from_to_match.group(1).upper()
+                dest_code = from_to_match.group(2).upper()
+                stations["boarding"] = boarding_code
+                stations["destination"] = dest_code
+        
+        return stations
+    
+    def _extract_passengers(self, text: str) -> List[Dict[str, Any]]:
+        """Extract passenger details with name, age, gender, coach, seat, and berth information"""
+        passengers = []
+        
+        # First, try to extract complete passenger info (name, age, gender, seat) together
+        # This is more reliable as it matches all info for the same passenger
+        
+        # Pattern 1: "1. Name Age Gender Status/Coach/Seat/Berth"
+        pattern1 = re.compile(
+            r'(?:^\d+\.|#\s*\d+)\s+([A-Z][A-Z\s]{2,30}?)\s+(\d{1,3})\s+(MALE|FEMALE|M|F)\s+(?:CNF|WL|RAC|CAN)\s*[/-]?\s*([A-Z]\d{1,2})\s*[/-]?\s*(\d{1,3})\s*[/-]?\s*(LB|MB|UB|SL|SU)?',
+            re.IGNORECASE | re.MULTILINE
+        )
+        
+        for match in pattern1.finditer(text):
+            name = match.group(1).strip().title()  # Convert to Title Case
+            age = int(match.group(2))
+            gender_str = match.group(3).upper()
+            coach = match.group(4).upper()
+            seat_number = int(match.group(5))
+            berth = (match.group(6).upper() if match.group(6) else "LB")
+            
+            # Normalize gender
+            gender = "M" if gender_str in ["M", "MALE"] else "F" if gender_str in ["F", "FEMALE"] else "O"
+            
+            passengers.append({
+                "name": name,
+                "age": age,
+                "gender": gender,
+                "coach": coach,
+                "seat_number": seat_number,
+                "berth_type": berth,
+                "booking_status": "CNF",  # Default, can be extracted if available
+                "current_status": "CNF",
+            })
+        
+        # Pattern 2: Multi-line format "Name\nGender| Age yrs\n...\nStatus/Coach/Seat/Berth"
+        # Extract names with gender and age first
+        name_age_gender_matches = []
+        pattern2_name = re.compile(
+            r'^([A-Z][A-Z\s]{2,30}?)\s*(?:Male|Female|M|F)\s*\|\s*(\d{1,3})\s*yrs?',
+            re.IGNORECASE | re.MULTILINE
+        )
+        
+        for match in pattern2_name.finditer(text):
+            name = match.group(1).strip().title()
+            age = int(match.group(2))
+            # Find gender from the line
+            gender_match = re.search(r'(?:Male|Female|M|F)', match.group(0), re.IGNORECASE)
+            gender_str = gender_match.group(0).upper() if gender_match else "M"
+            gender = "M" if gender_str in ["M", "MALE"] else "F" if gender_str in ["F", "FEMALE"] else "O"
+            
+            name_age_gender_matches.append({
+                "name": name,
+                "age": age,
+                "gender": gender,
+                "position": match.start(),
+            })
+        
+        # Now find seat information near each name
+        seat_matches = []
+        for pattern in self.seat_patterns:
+            for match in pattern.finditer(text):
+                if match.groups():
+                    coach = match.group(1).upper()
+                    seat_num = match.group(2)
+                    berth = (match.group(3).upper() if len(match.groups()) > 2 and match.group(3) else "LB")
+                    
+                    if coach and seat_num:
+                        try:
+                            seat_number = int(seat_num)
+                            seat_matches.append({
+                                "coach": coach,
+                                "seat_number": seat_number,
+                                "berth_type": berth,
+                                "position": match.start(),
+                            })
+                        except ValueError:
+                            continue
+        
+        # Match names with seats (closest seat to each name)
+        if name_age_gender_matches and seat_matches:
+            for name_info in name_age_gender_matches:
+                # Find closest seat match
+                closest_seat = None
+                min_distance = float('inf')
+                
+                for seat_info in seat_matches:
+                    distance = abs(seat_info["position"] - name_info["position"])
+                    if distance < min_distance:
+                        min_distance = distance
+                        closest_seat = seat_info
+                
+                if closest_seat and min_distance < 500:  # Reasonable distance threshold
+                    passengers.append({
+                        "name": name_info["name"],
+                        "age": name_info["age"],
+                        "gender": name_info["gender"],
+                        "coach": closest_seat["coach"],
+                        "seat_number": closest_seat["seat_number"],
+                        "berth_type": closest_seat["berth_type"],
+                        "booking_status": "CNF",
+                        "current_status": "CNF",
+                    })
+        
+        # Fallback: If we couldn't extract names, at least extract seat information
+        if not passengers:
+            for pattern in self.seat_patterns:
+                matches = pattern.finditer(text)
+                for match in matches:
+                    if match.groups():
+                        coach = match.group(1).upper()
+                        seat_num = match.group(2)
+                        berth = (match.group(3).upper() if len(match.groups()) > 2 and match.group(3) else "LB")
+                        
+                        if coach and seat_num:
+                            try:
+                                seat_number = int(seat_num)
+                                passengers.append({
+                                    "name": "Unknown",  # Placeholder
+                                    "age": 0,
+                                    "gender": "M",
+                                    "coach": coach,
+                                    "seat_number": seat_number,
+                                    "berth_type": berth,
+                                    "booking_status": "CNF",
+                                    "current_status": "CNF",
+                                })
+                            except ValueError:
+                                continue
+        
+        # Remove duplicates based on coach and seat number
+        seen = set()
+        unique_passengers = []
+        for p in passengers:
+            key = (p["coach"], p["seat_number"])
+            if key not in seen:
+                seen.add(key)
+                unique_passengers.append(p)
+        
+        return unique_passengers
     
     def _get_mock_ticket_text(self) -> str:
         """Return mock ticket text for development/testing"""
@@ -133,9 +700,10 @@ class OCRService:
         Class: 3A
         
         Passenger Details:
-        1. RAHUL KUMAR M/35 CNF B2/45/LB
-        2. PRIYA KUMAR F/32 CNF B2/47/MB  
-        3. ARYAN KUMAR M/8 CNF B3/12/UB
+        # Name Age Gender Booking Status Current Status
+        1. RAHUL KUMAR 35 MALE CNF/B2/45/LB CNF/B2/45/LB
+        2. PRIYA KUMAR 32 FEMALE CNF/B2/47/MB CNF/B2/47/MB
+        3. ARYAN KUMAR 8 MALE CNF/B3/12/UB CNF/B3/12/UB
         
         Booking Status: CNF
         """

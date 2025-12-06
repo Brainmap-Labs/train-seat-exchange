@@ -40,6 +40,8 @@ export const authApi = {
 
 // Ticket API
 export const ticketApi = {
+  lookupPnr: (pnr: string) => 
+    api.post('/tickets/lookup-pnr', { pnr }),
   uploadImage: (formData: FormData) => 
     api.post('/tickets/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },

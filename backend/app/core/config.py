@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
+import os
 
 class Settings(BaseSettings):
     # App
@@ -21,8 +22,15 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
     
-    # OCR
-    HUGGINGFACE_MODEL: str = "microsoft/trocr-base-printed"
+    # OCR (fallback option)
+    # Hugging Face OCR Model (recommended for better accuracy)
+    HUGGINGFACE_MODEL: str = "nanonets/Nanonets-OCR2-3B"  # or "microsoft/trocr-base-printed"
+    USE_HUGGINGFACE_OCR: bool = False  # Set to False to use Tesseract instead
+    TESSERACT_CMD: Optional[str] = None  # Optional path to tesseract executable
+    
+    # PNR Lookup API
+    INDIAN_RAIL_API_KEY: Optional[str] = None  # API key for Indian Rail API
+    INDIAN_RAIL_API_URL: str = "https://indianrailapi.com/api/v2"  # Base URL for PNR API
     
     class Config:
         env_file = ".env"
