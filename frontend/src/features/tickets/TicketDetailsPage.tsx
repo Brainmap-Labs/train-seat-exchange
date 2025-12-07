@@ -1,27 +1,83 @@
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { ArrowLeft, Train, Calendar, MapPin } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader } from '@/components/ui/Card'
 import { CoachVisualizer } from '@/components/coach/CoachVisualizer'
+import { ticketApi } from '@/services/api'
+import { Ticket } from '@/types'
 
 export function TicketDetailsPage() {
   const { ticketId } = useParams()
+  const navigate = useNavigate()
+  const [ticket, setTicket] = useState<Ticket | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  // TODO: Fetch ticket from API
-  const ticket = {
-    id: ticketId,
-    pnr: '4521678901',
-    trainNumber: '12301',
-    trainName: 'Howrah Rajdhani Express',
-    travelDate: new Date('2025-01-15'),
-    boardingStation: { code: 'NDLS', name: 'New Delhi' },
-    destinationStation: { code: 'HWH', name: 'Howrah Junction' },
-    classType: '3A' as const,
-    passengers: [
-      { id: '1', name: 'Rahul Kumar', age: 35, gender: 'M' as const, coach: 'B2', seatNumber: 45, berthType: 'LB' as const, bookingStatus: 'CNF' as const, currentStatus: 'CNF' as const },
-      { id: '2', name: 'Priya Kumar', age: 32, gender: 'F' as const, coach: 'B2', seatNumber: 47, berthType: 'MB' as const, bookingStatus: 'CNF' as const, currentStatus: 'CNF' as const },
-      { id: '3', name: 'Aryan Kumar', age: 8, gender: 'M' as const, coach: 'B3', seatNumber: 12, berthType: 'UB' as const, bookingStatus: 'CNF' as const, currentStatus: 'CNF' as const },
-    ],
+  useEffect(() => {
+    if (ticketId) {
+      loadTicket()
+    }
+  }, [ticketId])
+
+  const loadTicket = async () => {
+    if (!ticketId) return
+    
+    try {
+      setIsLoading(true)
+      setError(null)
+      const response = await ticketApi.getById(ticketId)
+      const t = response.data
+      
+      // Transform API response to Ticket format
+      const transformedTicket: Ticket = {
+        id: t.id,
+        userId: '',
+        pnr: t.pnr,
+        trainNumber: t.train_number,
+        trainName: t.train_name,
+        travelDate: new Date(t.travel_date),
+        boardingStation: t.boarding_station,
+        destinationStation: t.destination_station,
+        classType: t.class_type,
+        quota: t.quota || 'GN',
+        status: t.status || 'active',
+        passengers: t.passengers || [],
+        createdAt: new Date(t.created_at || Date.now()),
+        updatedAt: new Date(t.updated_at || Date.now()),
+      }
+      setTicket(transformedTicket)
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to load ticket')
+      console.error('Error loading ticket:', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-slate-600">Loading ticket...</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (error || !ticket) {
+    return (
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="py-12 text-center">
+            <p className="text-red-700 mb-4">{error || 'Ticket not found'}</p>
+            <Button onClick={() => navigate('/dashboard')}>Back to Dashboard</Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (

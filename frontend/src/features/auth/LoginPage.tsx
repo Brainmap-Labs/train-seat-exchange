@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card, CardContent } from '@/components/ui/Card'
 import { useAuthStore } from '@/store/authStore'
+import { authApi } from '@/services/api'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -13,34 +14,52 @@ export function LoginPage() {
   const [phone, setPhone] = useState('')
   const [otp, setOtp] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleSendOtp = async () => {
     if (phone.length !== 10) return
     setIsLoading(true)
-    // TODO: API call to send OTP
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    setIsLoading(false)
-    setStep('otp')
+    setError(null)
+    
+    try {
+      await authApi.sendOtp(phone)
+      setIsLoading(false)
+      setStep('otp')
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to send OTP. Please try again.')
+      setIsLoading(false)
+    }
   }
 
   const handleVerifyOtp = async () => {
     if (otp.length !== 6) return
     setIsLoading(true)
-    // TODO: API call to verify OTP
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    setError(null)
     
-    // Mock login
-    login({
-      id: '1',
-      phone,
-      name: 'User',
-      rating: 4.5,
-      totalExchanges: 0,
-      createdAt: new Date(),
-    })
-    
-    setIsLoading(false)
-    navigate('/dashboard')
+    try {
+      const response = await authApi.verifyOtp(phone, otp)
+      const { access_token, user } = response.data
+      
+      // Store token in localStorage
+      localStorage.setItem('auth-token', access_token)
+      
+      // Update auth store with user data
+      login({
+        id: user.id,
+        phone: user.phone,
+        name: user.name || `User_${phone.slice(-4)}`,
+        email: user.email,
+        rating: user.rating || 0,
+        totalExchanges: user.total_exchanges || 0,
+        createdAt: new Date(),
+      })
+      
+      setIsLoading(false)
+      navigate('/dashboard')
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Invalid OTP. Please try again.')
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -63,6 +82,12 @@ export function LoginPage() {
               : `We've sent a 6-digit code to +91 ${phone}`
             }
           </p>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm text-center">
+              {error}
+            </div>
+          )}
 
           {step === 'phone' ? (
             <div className="space-y-6">

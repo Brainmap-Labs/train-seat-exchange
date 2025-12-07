@@ -11,6 +11,12 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('auth-token')
   if (token) {
+    // For multipart/form-data, ensure Authorization header is set
+    // but don't override Content-Type (axios will set it with boundary)
+    if (config.data instanceof FormData) {
+      // Remove Content-Type to let axios set it with boundary
+      delete config.headers['Content-Type']
+    }
     config.headers.Authorization = `Bearer ${token}`
   }
   return config
@@ -42,10 +48,11 @@ export const authApi = {
 export const ticketApi = {
   lookupPnr: (pnr: string) => 
     api.post('/tickets/lookup-pnr', { pnr }),
-  uploadImage: (formData: FormData) => 
-    api.post('/tickets/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }),
+  uploadImage: (formData: FormData) => {
+    // Don't set Content-Type header - axios will set it automatically with boundary
+    // The Authorization header from the interceptor will be preserved
+    return api.post('/tickets/upload', formData)
+  },
   create: (data: any) => api.post('/tickets', data),
   getAll: () => api.get('/tickets'),
   getById: (id: string) => api.get(`/tickets/${id}`),

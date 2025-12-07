@@ -4,37 +4,45 @@ import { ArrowLeft, Search, Star, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader } from '@/components/ui/Card'
 import { ExchangeMatch } from '@/types'
+import { exchangeApi } from '@/services/api'
 
 export function FindExchangePage() {
   const { ticketId } = useParams()
   const [isSearching, setIsSearching] = useState(false)
   const [matches, setMatches] = useState<ExchangeMatch[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   const handleSearch = async () => {
+    if (!ticketId) return
+    
     setIsSearching(true)
-    // TODO: API call
-    await new Promise(r => setTimeout(r, 1500))
-    setMatches([
-      {
-        userId: '2',
-        userName: 'Amit Sharma',
-        userRating: 4.8,
-        ticketId: '2',
-        matchScore: 95,
-        benefitDescription: 'Get seat 46 (LB) in B2 - Adjacent to your family!',
-        availableSeats: [{ passengerId: '4', passengerName: 'Amit', coach: 'B2', seatNumber: 46, berthType: 'LB' }],
-      },
-      {
-        userId: '3',
-        userName: 'Sneha Patel',
-        userRating: 4.5,
-        ticketId: '3',
-        matchScore: 80,
-        benefitDescription: 'Get seat 48 (UB) in B2 - Same bay as your family',
-        availableSeats: [{ passengerId: '5', passengerName: 'Sneha', coach: 'B2', seatNumber: 48, berthType: 'UB' }],
-      },
-    ])
-    setIsSearching(false)
+    setError(null)
+    
+    try {
+      const response = await exchangeApi.findMatches(ticketId)
+      // Transform API response to ExchangeMatch format
+      const transformedMatches: ExchangeMatch[] = (response.data.matches || []).map((m: any) => ({
+        userId: m.user_id,
+        userName: m.user_name || 'User',
+        userRating: m.user_rating || 0,
+        ticketId: m.ticket_id,
+        matchScore: m.match_score || 0,
+        benefitDescription: m.benefit_description || 'Potential exchange available',
+        availableSeats: (m.available_seats || []).map((s: any) => ({
+          passengerId: s.passenger_id,
+          passengerName: s.passenger_name,
+          coach: s.coach,
+          seatNumber: s.seat_number,
+          berthType: s.berth_type,
+        })),
+      }))
+      setMatches(transformedMatches)
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to find matches. Please try again.')
+      console.error('Error finding matches:', err)
+    } finally {
+      setIsSearching(false)
+    }
   }
 
   return (
@@ -46,6 +54,14 @@ export function FindExchangePage() {
 
       <h1 className="font-display text-3xl font-bold text-slate-900 mb-2">Find Seat Exchange</h1>
       <p className="text-slate-600 mb-8">We'll find passengers who might exchange seats with you</p>
+
+      {error && (
+        <Card className="mb-6 border-red-200 bg-red-50">
+          <CardContent className="p-4">
+            <p className="text-red-700">{error}</p>
+          </CardContent>
+        </Card>
+      )}
 
       {matches.length === 0 ? (
         <Card>

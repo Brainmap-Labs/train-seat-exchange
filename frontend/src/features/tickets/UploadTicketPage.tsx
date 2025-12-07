@@ -141,9 +141,108 @@ export function UploadTicketPage() {
   }
 
   const handleConfirm = async () => {
-    // TODO: API call to save ticket
-    setStep('complete')
-    setTimeout(() => navigate('/dashboard'), 1500)
+    if (!extractedData) return
+    
+    setIsProcessing(true)
+    setError(null)
+    
+    try {
+      // Parse stations
+      const [boardingCode, ...boardingNameParts] = (extractedData.boardingStation || '').split(' - ')
+      const [destCode, ...destNameParts] = (extractedData.destinationStation || '').split(' - ')
+      
+      // Parse and format travel date
+      let travelDate: string
+      if (extractedData.travelDate) {
+        // Try to parse the date string and convert to ISO format
+        const date = new Date(extractedData.travelDate)
+        if (isNaN(date.getTime())) {
+          // If parsing fails, try common Indian date formats
+          // Format: "26-Apr-2024" or "26/04/2024"
+          const dateStr = extractedData.travelDate.trim()
+          const parts = dateStr.split(/[-/]/)
+          if (parts.length === 3) {
+            const day = parseInt(parts[0])
+            const monthStr = parts[1]
+            const year = parseInt(parts[2])
+            
+            // Map month names to numbers
+            const monthMap: { [key: string]: number } = {
+              'jan': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'may': 4, 'jun': 5,
+              'jul': 6, 'aug': 7, 'sep': 8, 'oct': 9, 'nov': 10, 'dec': 11
+            }
+            
+            let month: number
+            if (isNaN(parseInt(monthStr))) {
+              month = monthMap[monthStr.toLowerCase().slice(0, 3)] ?? 0
+            } else {
+              month = parseInt(monthStr) - 1
+            }
+            
+            const parsedDate = new Date(year, month, day)
+            travelDate = parsedDate.toISOString()
+          } else {
+            throw new Error('Invalid date format')
+          }
+        } else {
+          travelDate = date.toISOString()
+        }
+      } else {
+        throw new Error('Travel date is required')
+      }
+      
+      // Create ticket payload
+      const ticketPayload = {
+        pnr: extractedData.pnr || '',
+        train_number: extractedData.trainNumber || '',
+        train_name: extractedData.trainName || '',
+        travel_date: travelDate,
+        boarding_station_code: boardingCode || '',
+        boarding_station_name: boardingNameParts.join(' - ') || boardingCode || '',
+        destination_station_code: destCode || '',
+        destination_station_name: destNameParts.join(' - ') || destCode || '',
+        class_type: extractedData.classType || '2S',
+        quota: 'GN',
+        passengers: extractedData.passengers.map(p => ({
+          name: p.name || 'Unknown',
+          age: p.age || 0,
+          gender: p.gender || 'M',
+          coach: p.coach || 'UNKNOWN',
+          seat_number: p.seatNumber || 0,
+          berth_type: p.berthType || 'LB',
+          booking_status: 'CNF',
+          current_status: 'CNF',
+        })),
+      }
+      
+      console.log('Sending ticket payload:', ticketPayload)
+      await ticketApi.create(ticketPayload)
+      setStep('complete')
+      setTimeout(() => navigate('/dashboard'), 1500)
+    } catch (err: any) {
+      console.error('Error saving ticket:', err)
+      console.error('Error response:', err.response?.data)
+      
+      // Handle validation errors (422)
+      let errorMessage = 'Failed to save ticket. Please try again.'
+      if (err.response?.data) {
+        if (err.response.data.detail) {
+          if (Array.isArray(err.response.data.detail)) {
+            // Pydantic validation errors
+            errorMessage = err.response.data.detail
+              .map((e: any) => `${e.loc?.join('.')}: ${e.msg}`)
+              .join(', ')
+          } else {
+            errorMessage = err.response.data.detail
+          }
+        }
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+      
+      setError(errorMessage)
+      setIsProcessing(false)
+    }
   }
 
   return (
