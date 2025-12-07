@@ -109,7 +109,10 @@ async def upload_ticket_image(
     ocr_service = OCRService(
         tesseract_cmd=settings.TESSERACT_CMD,
         huggingface_model=settings.HUGGINGFACE_MODEL,
-        use_huggingface=settings.USE_HUGGINGFACE_OCR
+        use_huggingface=settings.USE_HUGGINGFACE_OCR,
+        use_openai_parsing=settings.USE_OPENAI_PARSING,
+        openai_api_key=settings.OPENAI_API_KEY,
+        openai_model=settings.OPENAI_MODEL
     )
     extracted_data = await ocr_service.extract_ticket_data(content, file.content_type)
     

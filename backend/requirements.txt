@@ -25,6 +25,7 @@ pydantic==2.5.2
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
 httpx==0.25.2
+openai==1.12.0  # For OpenAI-based ticket parsing
 
 # Real-time
 python-socketio==5.10.0

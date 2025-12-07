@@ -15,7 +15,10 @@ class OCRService:
     
     def __init__(self, tesseract_cmd: Optional[str] = None, 
                  huggingface_model: Optional[str] = None,
-                 use_huggingface: bool = True):
+                 use_huggingface: bool = True,
+                 use_openai_parsing: bool = False,
+                 openai_api_key: Optional[str] = None,
+                 openai_model: str = "gpt-4o-mini"):
         # PNR patterns - multiple formats
         # Format 1: "PNR: 2647755663" or "PNR:2215801342"
         # Format 2: "2647755663" (standalone 10 digits)
@@ -107,8 +110,12 @@ class OCRService:
         
         self.huggingface_model = huggingface_model
         self.use_huggingface = use_huggingface
+        self.use_openai_parsing = use_openai_parsing
+        self.openai_api_key = openai_api_key
+        self.openai_model = openai_model
         self.huggingface_available = False
         self.tesseract_available = False
+        self.openai_available = False
         self.ocr_pipeline = None  # Will be initialized if Hugging Face is available
         
         # Check OCR availability
@@ -117,6 +124,10 @@ class OCRService:
         
         if not self.huggingface_available:
             self.tesseract_available = self._check_tesseract(tesseract_cmd)
+        
+        # Check OpenAI availability for parsing
+        if self.use_openai_parsing:
+            self.openai_available = self._check_openai()
     
     def _check_huggingface(self) -> bool:
         """Check if Hugging Face transformers are available and model can be loaded"""
@@ -326,7 +337,26 @@ class OCRService:
             return self._get_mock_ticket_text()
     
     def _parse_ticket_text(self, text: str) -> Dict[str, Any]:
-        """Parse ticket text and extract structured data from multiple OCR formats"""
+        """Parse ticket text and extract structured data from multiple OCR formats
+        
+        Uses OpenAI parsing if enabled, otherwise falls back to regex parsing
+        """
+        # Try OpenAI parsing first if enabled
+        if self.use_openai_parsing and self.openai_available:
+            try:
+                result = self._parse_with_openai(text)
+                if result and result.get("confidence", 0) > 0.5:  # Only use if confidence is reasonable
+                    return result
+                else:
+                    print("⚠️  OpenAI parsing returned low confidence, falling back to regex...")
+            except Exception as e:
+                print(f"⚠️  OpenAI parsing failed: {e}. Falling back to regex parsing...")
+        
+        # Fallback to regex parsing
+        return self._parse_with_regex(text)
+    
+    def _parse_with_regex(self, text: str) -> Dict[str, Any]:
+        """Parse ticket text using regex patterns (original method)"""
         result = {
             "pnr": None,
             "train_number": None,
@@ -338,7 +368,9 @@ class OCRService:
             "passengers": [],
             "confidence": 0.0,
         }
-               
+        
+        # Normalize text - remove extra whitespace and newlines for better matching
+        normalized_text = ' '.join(text.split())
         
         # Extract PNR - try multiple patterns
         for pattern in self.pnr_patterns:
@@ -431,6 +463,147 @@ class OCRService:
         result["confidence"] = min(result["confidence"], 1.0)
         
         return result
+    
+    def _check_openai(self) -> bool:
+        """Check if OpenAI API is available and configured"""
+        try:
+            from openai import OpenAI
+            
+            if not self.openai_api_key:
+                print("⚠️  OpenAI API key not configured. Set OPENAI_API_KEY in your .env file.")
+                return False
+            
+            # Try to initialize client (won't make API call yet)
+            self.openai_client = OpenAI(api_key=self.openai_api_key)
+            print(f"✅ OpenAI client initialized (model: {self.openai_model})")
+            return True
+        except ImportError:
+            print("⚠️  openai package not installed. Install with: pip install openai")
+            return False
+        except Exception as e:
+            print(f"⚠️  Failed to initialize OpenAI: {e}")
+            return False
+    
+    def _parse_with_openai(self, text: str) -> Dict[str, Any]:
+        """Parse ticket text using OpenAI model"""
+        try:
+            from openai import OpenAI
+            
+            if not hasattr(self, 'openai_client') or not self.openai_client:
+                raise Exception("OpenAI client not initialized")
+            
+            # Create a structured prompt for ticket parsing
+            prompt = f"""Extract ticket information from the following Indian Railways ticket text. 
+Return a JSON object with the following structure:
+{{
+    "pnr": "10-digit PNR number or null",
+    "train_number": "Train number (4-5 digits) or null",
+    "train_name": "Train name or null",
+    "travel_date": "Date in DD-MMM-YYYY format or null",
+    "boarding_station": "Station code - Station name (e.g., 'NDLS - New Delhi') or null",
+    "destination_station": "Station code - Station name (e.g., 'HWH - Howrah Junction') or null",
+    "class_type": "Class code (1A, 2A, 3A, SL, CC, EC, 2S) or null",
+    "passengers": [
+        {{
+            "name": "Passenger full name",
+            "age": integer_age,
+            "gender": "M, F, or O",
+            "coach": "Coach code (e.g., B2, A1)",
+            "seat_number": integer_seat_number,
+            "berth_type": "LB, MB, UB, SL, or SU",
+            "booking_status": "CNF, RAC, WL, RLWL, or PQWL",
+            "current_status": "CNF, RAC, WL, RLWL, or PQWL"
+        }}
+    ],
+    "confidence": float_between_0_and_1
+}}
+
+Ticket text:
+{text}
+
+Important:
+- Extract all passenger details including name, age, gender, coach, seat number, and berth type
+- Normalize gender to M, F, or O
+- Normalize class type to standard codes (1A, 2A, 3A, SL, CC, EC, 2S)
+- For stations, use format "CODE - Name" (e.g., "NDLS - New Delhi")
+- Set confidence based on how much information was successfully extracted
+- Return only valid JSON, no additional text"""
+
+            # Call OpenAI API
+            response = self.openai_client.chat.completions.create(
+                model=self.openai_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an expert at parsing Indian Railways ticket information. Always return valid JSON only."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.1,  # Low temperature for consistent parsing
+                response_format={"type": "json_object"}  # Force JSON response
+            )
+            
+            # Parse the response
+            import json
+            parsed_data = json.loads(response.choices[0].message.content)
+            
+            # Validate and normalize the response
+            result = {
+                "pnr": parsed_data.get("pnr"),
+                "train_number": parsed_data.get("train_number"),
+                "train_name": parsed_data.get("train_name"),
+                "travel_date": parsed_data.get("travel_date"),
+                "boarding_station": parsed_data.get("boarding_station"),
+                "destination_station": parsed_data.get("destination_station"),
+                "class_type": parsed_data.get("class_type"),
+                "passengers": parsed_data.get("passengers", []),
+                "confidence": float(parsed_data.get("confidence", 0.8)),
+            }
+            
+            # Normalize passenger data
+            normalized_passengers = []
+            for p in result["passengers"]:
+                # Normalize gender
+                gender = str(p.get("gender", "M")).upper()
+                if gender not in ["M", "F", "O"]:
+                    gender = "M" if gender in ["MALE", "M"] else "F" if gender in ["FEMALE", "F"] else "O"
+                
+                # Normalize berth type
+                berth = str(p.get("berth_type", "LB")).upper()
+                if berth not in ["LB", "MB", "UB", "SL", "SU"]:
+                    berth = "LB"
+                
+                # Normalize booking status
+                booking_status = str(p.get("booking_status", "CNF")).upper()
+                if booking_status not in ["CNF", "RAC", "WL", "RLWL", "PQWL"]:
+                    booking_status = "CNF"
+                
+                normalized_passengers.append({
+                    "name": str(p.get("name", "Unknown")).title(),
+                    "age": int(p.get("age", 0)) if p.get("age") else 0,
+                    "gender": gender,
+                    "coach": str(p.get("coach", "")).upper(),
+                    "seat_number": int(p.get("seat_number", 0)) if p.get("seat_number") else 0,
+                    "berth_type": berth,
+                    "booking_status": booking_status,
+                    "current_status": booking_status,
+                })
+            
+            result["passengers"] = normalized_passengers
+            
+            # Normalize class type
+            if result["class_type"]:
+                result["class_type"] = self._normalize_class(result["class_type"])
+            
+            print(f"✅ OpenAI parsing completed with confidence: {result['confidence']:.2f}")
+            return result
+            
+        except Exception as e:
+            print(f"❌ OpenAI parsing error: {e}")
+            raise
     
     def _normalize_date(self, date_str: str) -> Optional[str]:
         """Normalize date string to standard format"""

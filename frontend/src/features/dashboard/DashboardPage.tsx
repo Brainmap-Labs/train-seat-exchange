@@ -49,6 +49,26 @@ export function DashboardPage() {
     }
   }
 
+  const handleDeleteTicket = async (ticketId: string) => {
+    const ticket = tickets.find(t => t.id === ticketId)
+    const confirmMessage = ticket
+      ? `Are you sure you want to delete ticket ${ticket.trainNumber} (PNR: ${ticket.pnr})? This action cannot be undone.`
+      : 'Are you sure you want to delete this ticket? This action cannot be undone.'
+    
+    if (!window.confirm(confirmMessage)) {
+      return
+    }
+
+    try {
+      await ticketApi.delete(ticketId)
+      // Remove ticket from local state
+      setTickets(tickets.filter(t => t.id !== ticketId))
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to delete ticket')
+      console.error('Error deleting ticket:', err)
+    }
+  }
+
   const upcomingTickets = tickets.filter(t => new Date(t.travelDate) >= new Date())
   const pastTickets = tickets.filter(t => new Date(t.travelDate) < new Date())
 
@@ -118,7 +138,7 @@ export function DashboardPage() {
         ) : upcomingTickets.length > 0 ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {upcomingTickets.map((ticket) => (
-              <TicketCard key={ticket.id} ticket={ticket} />
+              <TicketCard key={ticket.id} ticket={ticket} onDelete={handleDeleteTicket} />
             ))}
           </div>
         ) : (
@@ -143,7 +163,7 @@ export function DashboardPage() {
           </h2>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {pastTickets.map((ticket) => (
-              <TicketCard key={ticket.id} ticket={ticket} showActions={false} />
+              <TicketCard key={ticket.id} ticket={ticket} showActions={false} onDelete={handleDeleteTicket} />
             ))}
           </div>
         </section>

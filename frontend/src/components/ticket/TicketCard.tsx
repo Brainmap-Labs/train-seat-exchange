@@ -1,5 +1,5 @@
 import { format } from 'date-fns'
-import { Train, Calendar, MapPin, Users, ArrowRight } from 'lucide-react'
+import { Train, Calendar, MapPin, Users, ArrowRight, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Ticket } from '@/types'
 import { Card } from '@/components/ui/Card'
@@ -8,9 +8,10 @@ import { clsx } from 'clsx'
 interface TicketCardProps {
   ticket: Ticket
   showActions?: boolean
+  onDelete?: (ticketId: string) => void
 }
 
-export function TicketCard({ ticket, showActions = true }: TicketCardProps) {
+export function TicketCard({ ticket, showActions = true, onDelete }: TicketCardProps) {
   const isScattered = new Set(ticket.passengers.map(p => p.coach)).size > 1
 
   return (
@@ -18,7 +19,7 @@ export function TicketCard({ ticket, showActions = true }: TicketCardProps) {
       {/* Header */}
       <div className="bg-gradient-to-r from-railway-blue to-blue-800 text-white px-6 py-4">
         <div className="flex items-start justify-between">
-          <div>
+          <div className="flex-1">
             <div className="flex items-center gap-2">
               <Train className="w-5 h-5 text-primary-400" />
               <span className="font-display font-bold text-lg">
@@ -30,8 +31,19 @@ export function TicketCard({ ticket, showActions = true }: TicketCardProps) {
               <span>{format(new Date(ticket.travelDate), 'EEE, dd MMM yyyy')}</span>
             </div>
           </div>
-          <div className="bg-primary-500 text-railway-blue px-3 py-1 rounded-full text-sm font-bold">
-            {ticket.classType}
+          <div className="flex items-center gap-2">
+            <div className="bg-primary-500 text-railway-blue px-3 py-1 rounded-full text-sm font-bold">
+              {ticket.classType}
+            </div>
+            {onDelete && (
+              <button
+                onClick={() => onDelete(ticket.id)}
+                className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
+                title="Delete ticket"
+              >
+                <Trash2 className="w-4 h-4 text-white" />
+              </button>
+            )}
           </div>
         </div>
       </div>

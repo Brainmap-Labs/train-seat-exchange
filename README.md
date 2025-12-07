@@ -172,6 +172,29 @@ INDIAN_RAIL_API_KEY=your_api_key_here
 
 **Note:** The app works without the API key, but PNR lookup will be unavailable. You can still use image upload as a fallback.
 
+#### Ticket Text Parsing Methods
+
+The app supports two methods for parsing ticket text after OCR:
+
+1. **Regex Parsing** (Default - Fast, No API costs)
+   - Uses pattern matching to extract ticket information
+   - Fast and works offline
+   - Handles common ticket formats
+
+2. **OpenAI Parsing** (Optional - Better accuracy for complex formats)
+   - Uses GPT-4o-mini or other OpenAI models
+   - Better at handling OCR errors and unusual formats
+   - Requires OpenAI API key
+
+To enable OpenAI parsing, add to your `.env` file:
+```env
+USE_OPENAI_PARSING=true
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_MODEL=gpt-4o-mini  # or gpt-4o, gpt-3.5-turbo, etc.
+```
+
+**Note:** If OpenAI parsing fails or returns low confidence, the system automatically falls back to regex parsing.
+
 ### Backend Setup
 
 ```bash
