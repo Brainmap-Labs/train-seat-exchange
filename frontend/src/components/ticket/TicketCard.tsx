@@ -80,33 +80,39 @@ export function TicketCard({ ticket, showActions = true, onDelete }: TicketCardP
         </div>
 
         <div className="space-y-2">
-          {ticket.passengers.map((passenger) => (
-            <div
-              key={passenger.id}
-              className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2"
-            >
-              <div>
-                <p className="font-medium text-sm">{passenger.name}</p>
-                <p className="text-xs text-slate-500">
-                  {passenger.age}yr • {passenger.gender === 'M' ? 'Male' : 'Female'}
-                </p>
+          {ticket.passengers.map((passenger) => {
+            // Allow for both camelCase and snake_case
+            const seatNumber = passenger.seatNumber !== undefined ? passenger.seatNumber : passenger.seat_number;
+            const coach = passenger.coach;
+            const berthType = passenger.berthType || passenger.berth_type;
+            return (
+              <div
+                key={passenger.id}
+                className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2"
+              >
+                <div>
+                  <p className="font-medium text-sm">{passenger.name}</p>
+                  <p className="text-xs text-slate-500">
+                    {passenger.age}yr • {passenger.gender === 'M' ? 'Male' : 'Female'}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-mono font-bold text-sm">
+                    {coach}/{seatNumber}
+                  </p>
+                  <p className={clsx(
+                    'text-xs font-medium',
+                    berthType === 'LB' && 'text-berth-lower',
+                    berthType === 'MB' && 'text-berth-middle',
+                    berthType === 'UB' && 'text-berth-upper',
+                    (berthType === 'SL' || berthType === 'SU') && 'text-berth-side',
+                  )}>
+                    {berthType}
+                  </p>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="font-mono font-bold text-sm">
-                  {passenger.coach}/{passenger.seatNumber}
-                </p>
-                <p className={clsx(
-                  'text-xs font-medium',
-                  passenger.berthType === 'LB' && 'text-berth-lower',
-                  passenger.berthType === 'MB' && 'text-berth-middle',
-                  passenger.berthType === 'UB' && 'text-berth-upper',
-                  (passenger.berthType === 'SL' || passenger.berthType === 'SU') && 'text-berth-side',
-                )}>
-                  {passenger.berthType}
-                </p>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 

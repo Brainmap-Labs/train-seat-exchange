@@ -42,7 +42,17 @@ export function TicketDetailsPage() {
         classType: t.class_type,
         quota: t.quota || 'GN',
         status: t.status || 'active',
-        passengers: t.passengers || [],
+        passengers: (t.passengers || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          age: p.age,
+          gender: p.gender,
+          coach: p.coach,
+          seatNumber: p.seatNumber !== undefined ? p.seatNumber : p.seat_number,
+          berthType: p.berthType || p.berth_type,
+          bookingStatus: p.bookingStatus || p.booking_status,
+          currentStatus: p.currentStatus || p.current_status,
+        })),
         createdAt: new Date(t.created_at || Date.now()),
         updatedAt: new Date(t.updated_at || Date.now()),
       }
@@ -139,18 +149,22 @@ export function TicketDetailsPage() {
           </CardContent>
         </Card>
 
-        {/* Coach Layout */}
-        <Card>
-          <CardHeader>
-            <h3 className="font-display text-lg font-bold">Coach Layout - B2</h3>
-          </CardHeader>
-          <CardContent>
-            <CoachVisualizer 
-              classType={ticket.classType}
-              passengers={ticket.passengers.filter(p => p.coach === 'B2')}
-            />
-          </CardContent>
-        </Card>
+        {/* Coach Layouts */}
+        <div className="space-y-6">
+          {Array.from(new Set(ticket.passengers.map(p => p.coach))).map((coach) => (
+            <Card key={coach}>
+              <CardHeader>
+                <h3 className="font-display text-lg font-bold">Coach Layout - {coach}</h3>
+              </CardHeader>
+              <CardContent>
+                <CoachVisualizer
+                  classType={['3A', 'SL', '2A'].includes(ticket.classType) ? (ticket.classType as '3A' | 'SL' | '2A') : '3A'}
+                  passengers={ticket.passengers.filter(p => p.coach === coach)}
+                />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
 
       {/* Actions */}

@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None  # Should be set in .env
     OPENAI_MODEL: str = "gpt-4o-mini"  # OpenAI model to use for parsing
     
+    # AI-Enhanced Matching Algorithm
+    USE_OPENAI_MATCHING: bool = True  # Enable AI-powered seat matching optimization
+    AI_MATCHING_TOP_N: int = 5  # Number of matches to send to AI for re-ranking
+    
     # PNR Lookup API
     INDIAN_RAIL_API_KEY: Optional[str] = None  # API key for Indian Rail API
     INDIAN_RAIL_API_URL: str = "https://indianrailapi.com/api/v2"  # Base URL for PNR API

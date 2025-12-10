@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Query
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
@@ -28,9 +28,16 @@ class SendExchangeRequest(BaseModel):
 async def find_exchange_matches(
     ticket_id: str,
     preferences: Optional[ExchangePreferences] = None,
+    use_ai_enhancement: bool = Query(False, description="Enable AI-powered matching optimization"),
     current_user: User = Depends(get_current_user)
 ):
-    """Find potential exchange matches for a ticket"""
+    """Find potential exchange matches for a ticket
+    
+    Args:
+        ticket_id: The ticket ID to find matches for
+        preferences: Optional user preferences for filtering
+        use_ai_enhancement: If True, uses OpenAI to enhance match ranking
+    """
     ticket = await Ticket.get(PydanticObjectId(ticket_id))
     
     if not ticket or ticket.user_id != current_user.id:
@@ -43,13 +50,60 @@ async def find_exchange_matches(
     matching_service = MatchingService()
     matches = await matching_service.find_matches(
         ticket=ticket,
-        preferences=preferences.model_dump() if preferences else {}
+        preferences=preferences.model_dump() if preferences else {},
+        use_ai_enhancement=use_ai_enhancement
     )
     
     return {
         "ticket_id": ticket_id,
         "matches": matches,
-        "total_matches": len(matches)
+        "total_matches": len(matches),
+        "ai_enhanced": use_ai_enhancement
+    }
+
+@router.post("/batch-find-matches")
+async def batch_find_matches(
+    ticket_ids: List[str] = Query(..., description="List of ticket IDs to find matches for"),
+    use_ai_enhancement: bool = Query(False, description="Enable AI-powered matching optimization"),
+    current_user: User = Depends(get_current_user)
+):
+    """Find matches for multiple tickets at once (efficient for 10s of users)
+    
+    Args:
+        ticket_ids: List of ticket IDs to process
+        use_ai_enhancement: If True, uses OpenAI to enhance match ranking
+    """
+    # Validate tickets belong to current user and retrieve them
+    tickets = []
+    for ticket_id in ticket_ids:
+        ticket = await Ticket.get(PydanticObjectId(ticket_id))
+        if not ticket or ticket.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied to ticket {ticket_id}"
+            )
+        tickets.append(ticket)
+    
+    # Batch find matches
+    matching_service = MatchingService()
+    batch_results = await matching_service.batch_find_matches(
+        tickets=tickets,
+        use_ai_enhancement=use_ai_enhancement
+    )
+    
+    # Format response
+    formatted_results = {}
+    for ticket_id, matches in batch_results.items():
+        formatted_results[ticket_id] = {
+            "matches": matches,
+            "total_matches": len(matches),
+            "ai_enhanced": use_ai_enhancement
+        }
+    
+    return {
+        "tickets_processed": len(tickets),
+        "results": formatted_results,
+        "ai_enhanced": use_ai_enhancement
     }
 
 @router.post("/request")
