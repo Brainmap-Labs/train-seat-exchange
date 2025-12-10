@@ -1,8 +1,14 @@
 import { Link } from 'react-router-dom'
 import { Train, Upload, Search, MessageCircle, Users, Star, Shield, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { useAuthStore } from '@/store/authStore'
 
 export function HomePage() {
+  const { isAuthenticated } = useAuthStore()
+  
+  // Determine navigation targets based on auth status
+  const primaryCtaLink = isAuthenticated ? '/tickets/upload' : '/tickets/upload'
+  const secondaryCtaLink = isAuthenticated ? '/dashboard' : '/login'
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -25,15 +31,15 @@ export function HomePage() {
               and ensure your family travels together comfortably.
             </p>
             <div className="flex flex-wrap gap-4">
-              <Link to="/tickets/upload">
+              <Link to={primaryCtaLink}>
                 <Button variant="secondary" size="lg">
                   <Upload className="w-5 h-5 mr-2" />
                   Upload Ticket
                 </Button>
               </Link>
-              <Link to="/login">
+              <Link to={secondaryCtaLink}>
                 <Button variant="outline" size="lg" className="border-white text-white hover:bg-white hover:text-railway-blue">
-                  Get Started Free
+                  {isAuthenticated ? 'My Trips' : 'Get Started Free'}
                 </Button>
               </Link>
             </div>
@@ -135,9 +141,11 @@ export function HomePage() {
             Ready to Travel Together?
           </h2>
           <p className="text-xl text-blue-100 mb-8">
-            Join thousands of families who've successfully exchanged seats
+            {isAuthenticated 
+              ? 'Upload a ticket and find passengers willing to exchange seats' 
+              : 'Join thousands of families who\'ve successfully exchanged seats'}
           </p>
-          <Link to="/login">
+          <Link to={secondaryCtaLink}>
             <Button variant="secondary" size="lg">
               Start Free Today
             </Button>
