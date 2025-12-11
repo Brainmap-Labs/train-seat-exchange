@@ -31,22 +31,31 @@ class TokenResponse(BaseModel):
 @router.post("/send-otp")
 async def send_otp(request: SendOtpRequest):
     """Send OTP to phone number"""
+    import logging
     phone = request.phone.strip()
-    
-    if len(phone) != 10 or not phone.isdigit():
+    logger = logging.getLogger("otp")
+    try:
+        if len(phone) != 10 or not phone.isdigit():
+            logger.error(f"Invalid phone number attempted: {phone}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid phone number"
+            )
+        # Generate 6-digit OTP
+        otp = str(random.randint(100000, 999999))
+        otp_store[phone] = otp
+        # TODO: Send OTP via SMS gateway (MSG91, Twilio, etc.)
+        logger.info(f"OTP for {phone}: {otp}")  # For development
+        # Simulate sending OTP, catch and log any errors
+        # Example: response = send_sms(phone, otp)
+        # logger.info(f"SMS response: {response}")
+        return {"message": "OTP sent successfully", "debug_otp": otp if settings.DEBUG else None}
+    except Exception as e:
+        logger.error(f"Failed to send OTP to {phone}: {e}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid phone number"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send OTP. Please try again."
         )
-    
-    # Generate 6-digit OTP
-    otp = str(random.randint(100000, 999999))
-    otp_store[phone] = otp
-    
-    # TODO: Send OTP via SMS gateway (MSG91, Twilio, etc.)
-    print(f"OTP for {phone}: {otp}")  # For development
-    
-    return {"message": "OTP sent successfully", "debug_otp": otp if settings.DEBUG else None}
 
 @router.post("/verify-otp", response_model=TokenResponse)
 async def verify_otp(request: VerifyOtpRequest):
