@@ -41,7 +41,6 @@ export function UploadTicketPage() {
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0]
     if (file) {
-      setUploadedFile(file)
       processTicket(file)
     }
   }, [])
@@ -496,7 +495,7 @@ export function UploadTicketPage() {
               setStep('input')
               setExtractedData(null)
               setPnr('')
-              setUploadedFile(null)
+              // setUploadedFile(null) removed
               setError(null)
             }} className="flex-1">
               Start Over
