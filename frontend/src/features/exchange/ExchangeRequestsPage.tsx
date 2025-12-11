@@ -64,7 +64,8 @@ export function ExchangeRequestsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-semibold text-lg">
-                      {activeTab === 'received' ? `From: ${req.from}` : `To: ${req.to}`}
+                      {activeTab === 'received' && 'from' in req ? `From: ${req.from}` : ''}
+                      {activeTab === 'sent' && 'to' in req ? `To: ${req.to}` : ''}
                     </p>
                     <p className="text-slate-600">{req.train}</p>
                     <p className="text-sm text-slate-500">Seat: {req.seat}</p>

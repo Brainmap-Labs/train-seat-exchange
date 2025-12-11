@@ -33,7 +33,7 @@ export function UploadTicketPage() {
   const [step, setStep] = useState<UploadStep>('input')
   const [inputMethod, setInputMethod] = useState<InputMethod>('pnr')
   const [pnr, setPnr] = useState('')
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  // Removed unused uploadedFile
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -70,9 +70,7 @@ export function UploadTicketPage() {
       const response = await ticketApi.lookupPnr(pnr)
       const data = response.data.data
       
-      // Parse station strings (format: "CODE - Name")
-      const [boardingCode, ...boardingNameParts] = (data.boarding_station || '').split(' - ')
-      const [destCode, ...destNameParts] = (data.destination_station || '').split(' - ')
+      // Removed unused boardingCode, boardingNameParts, destCode, destNameParts
       
       setExtractedData({
         pnr: data.pnr,
