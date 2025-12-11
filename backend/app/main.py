@@ -36,6 +36,12 @@ app.include_router(tickets.router, prefix="/api/tickets", tags=["Tickets"])
 app.include_router(exchange.router, prefix="/api/exchange", tags=["Exchange"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 
+
+# Respond to HEAD requests on '/'
+@app.head("/")
+async def head_root():
+    return
+
 @app.get("/")
 async def root():
     return {"message": "Train Seat Exchange API", "version": "1.0.0"}
