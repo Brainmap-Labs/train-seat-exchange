@@ -1,39 +1,76 @@
 import { Link } from 'react-router-dom'
 import { Plus, Train, Calendar, ArrowRight } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 import { TicketCard } from '@/components/ticket/TicketCard'
 import { useAuthStore } from '@/store/authStore'
 import { Ticket } from '@/types'
-
-// Mock data - replace with API call
-const mockTickets: Ticket[] = [
-  {
-    id: '1',
-    userId: '1',
-    pnr: '4521678901',
-    trainNumber: '12301',
-    trainName: 'Howrah Rajdhani',
-    travelDate: new Date('2025-01-15'),
-    boardingStation: { code: 'NDLS', name: 'New Delhi' },
-    destinationStation: { code: 'HWH', name: 'Howrah Junction' },
-    classType: '3A',
-    quota: 'GN',
-    status: 'active',
-    passengers: [
-      { id: '1', name: 'Rahul Kumar', age: 35, gender: 'M', coach: 'B2', seatNumber: 45, berthType: 'LB', bookingStatus: 'CNF', currentStatus: 'CNF' },
-      { id: '2', name: 'Priya Kumar', age: 32, gender: 'F', coach: 'B2', seatNumber: 47, berthType: 'MB', bookingStatus: 'CNF', currentStatus: 'CNF' },
-      { id: '3', name: 'Aryan Kumar', age: 8, gender: 'M', coach: 'B3', seatNumber: 12, berthType: 'UB', bookingStatus: 'CNF', currentStatus: 'CNF' },
-    ],
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-]
+import { ticketApi } from '@/services/api'
 
 export function DashboardPage() {
   const { user } = useAuthStore()
-  const upcomingTickets = mockTickets.filter(t => new Date(t.travelDate) >= new Date())
-  const pastTickets = mockTickets.filter(t => new Date(t.travelDate) < new Date())
+  const [tickets, setTickets] = useState<Ticket[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    loadTickets()
+  }, [])
+
+  const loadTickets = async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      const response = await ticketApi.getAll()
+      // Transform API response to Ticket format
+      const transformedTickets: Ticket[] = response.data.map((t: any) => ({
+        id: t.id,
+        userId: user?.id || '',
+        pnr: t.pnr,
+        trainNumber: t.train_number,
+        trainName: t.train_name,
+        travelDate: new Date(t.travel_date),
+        boardingStation: t.boarding_station,
+        destinationStation: t.destination_station,
+        classType: t.class_type,
+        quota: t.quota || 'GN',
+        status: t.status || 'active',
+        passengers: t.passengers || [],
+        createdAt: new Date(t.created_at || Date.now()),
+        updatedAt: new Date(t.updated_at || Date.now()),
+      }))
+      setTickets(transformedTickets)
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to load tickets')
+      console.error('Error loading tickets:', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleDeleteTicket = async (ticketId: string) => {
+    const ticket = tickets.find(t => t.id === ticketId)
+    const confirmMessage = ticket
+      ? `Are you sure you want to delete ticket ${ticket.trainNumber} (PNR: ${ticket.pnr})? This action cannot be undone.`
+      : 'Are you sure you want to delete this ticket? This action cannot be undone.'
+    
+    if (!window.confirm(confirmMessage)) {
+      return
+    }
+
+    try {
+      await ticketApi.delete(ticketId)
+      // Remove ticket from local state
+      setTickets(tickets.filter(t => t.id !== ticketId))
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to delete ticket')
+      console.error('Error deleting ticket:', err)
+    }
+  }
+
+  const upcomingTickets = tickets.filter(t => new Date(t.travelDate) >= new Date())
+  const pastTickets = tickets.filter(t => new Date(t.travelDate) < new Date())
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -59,7 +96,7 @@ export function DashboardPage() {
           { label: 'Upcoming Trips', value: upcomingTickets.length, icon: Train },
           { label: 'Total Exchanges', value: user?.totalExchanges || 0, icon: ArrowRight },
           { label: 'Your Rating', value: user?.rating?.toFixed(1) || '—', icon: Calendar },
-          { label: 'Pending Requests', value: 2, icon: Calendar },
+          { label: 'Pending Requests', value: 0, icon: Calendar },
         ].map((stat, index) => (
           <Card key={index}>
             <CardContent className="p-4">
@@ -77,16 +114,31 @@ export function DashboardPage() {
         ))}
       </div>
 
+      {/* Error Message */}
+      {error && (
+        <Card className="mb-8 border-red-200 bg-red-50">
+          <CardContent className="p-4">
+            <p className="text-red-700">{error}</p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Upcoming Trips */}
       <section className="mb-12">
         <h2 className="font-display text-xl font-bold text-slate-900 mb-4">
           Upcoming Trips
         </h2>
 
-        {upcomingTickets.length > 0 ? (
+        {isLoading ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-slate-600">Loading tickets...</p>
+            </CardContent>
+          </Card>
+        ) : upcomingTickets.length > 0 ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {upcomingTickets.map((ticket) => (
-              <TicketCard key={ticket.id} ticket={ticket} />
+              <TicketCard key={ticket.id} ticket={ticket} onDelete={handleDeleteTicket} />
             ))}
           </div>
         ) : (
@@ -111,7 +163,7 @@ export function DashboardPage() {
           </h2>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {pastTickets.map((ticket) => (
-              <TicketCard key={ticket.id} ticket={ticket} showActions={false} />
+              <TicketCard key={ticket.id} ticket={ticket} showActions={false} onDelete={handleDeleteTicket} />
             ))}
           </div>
         </section>

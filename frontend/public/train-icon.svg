@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Background -->
+  <rect width="200" height="200" fill="#1a237e" rx="40"/>
+  
+  <!-- Train body -->
+  <g transform="translate(50, 60)">
+    <!-- Main locomotive body -->
+    <rect x="0" y="15" width="80" height="45" fill="#f9a825" rx="3"/>
+    
+    <!-- Cab window -->
+    <circle cx="12" cy="30" r="8" fill="#e8f4f8"/>
+    
+    <!-- Smoke stack -->
+    <rect x="8" y="5" width="6" height="12" fill="#555"/>
+    <ellipse cx="11" cy="5" rx="6" ry="3" fill="#888"/>
+    
+    <!-- Wheels -->
+    <circle cx="15" cy="65" r="7" fill="#333"/>
+    <circle cx="35" cy="65" r="7" fill="#333"/>
+    <circle cx="55" cy="65" r="7" fill="#333"/>
+    <circle cx="75" cy="65" r="7" fill="#333"/>
+    
+    <!-- Wheel centers -->
+    <circle cx="15" cy="65" r="3" fill="#f9a825"/>
+    <circle cx="35" cy="65" r="3" fill="#f9a825"/>
+    <circle cx="55" cy="65" r="3" fill="#f9a825"/>
+    <circle cx="75" cy="65" r="3" fill="#f9a825"/>
+    
+    <!-- Connector rod -->
+    <line x1="15" y1="72" x2="75" y2="72" stroke="#555" stroke-width="2"/>
+  </g>
+  
+  <!-- Accent lines -->
+  <line x1="20" y1="140" x2="180" y2="140" stroke="#f9a825" stroke-width="2" opacity="0.3"/>
+</svg>

@@ -56,9 +56,17 @@ async def verify_otp(request: VerifyOtpRequest):
     
     stored_otp = otp_store.get(phone)
     
-    # For development, accept "123456" as valid OTP
-    if settings.DEBUG and otp == "123456":
-        stored_otp = "123456"
+    # For development, accept any OTP if DEBUG mode is enabled
+    if settings.DEBUG:
+        # In DEBUG mode, accept any 6-digit OTP
+        if len(otp) == 6 and otp.isdigit():
+            stored_otp = otp
+        # Also accept the stored OTP if it exists
+        elif stored_otp:
+            pass  # Use stored OTP
+        else:
+            # If no stored OTP, accept any 6-digit OTP
+            stored_otp = otp
     
     if not stored_otp or stored_otp != otp:
         raise HTTPException(

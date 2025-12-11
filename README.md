@@ -12,7 +12,8 @@ SeatSwap is a platform that helps train passengers exchange seats so families ca
 
 ## ✨ Features
 
-- **📷 Ticket Upload & OCR** - Upload e-ticket images/PDFs and automatically extract details
+- **🔢 PNR Lookup** - Enter your PNR number to instantly fetch ticket details (Recommended - faster and more accurate)
+- **📷 Ticket Upload & OCR** - Upload e-ticket images/PDFs as a fallback option
 - **🔍 Smart Matching** - AI-powered algorithm to find the best exchange opportunities
 - **💬 In-App Chat** - Communicate with other passengers to coordinate exchanges
 - **🚃 Coach Visualization** - Visual representation of coach layouts and seat positions
@@ -89,7 +90,110 @@ train-seat-exchange/
 - Node.js 18+
 - Python 3.10+
 - MongoDB
-- (Optional) Tesseract OCR for local OCR processing
+- (Optional) Indian Railways API key for PNR lookup - Get free API key from [Indian Rail API](https://indianrailapi.com)
+- (Optional) Hugging Face OCR models (automatically downloaded on first use) or Tesseract OCR for image processing fallback
+
+#### OCR Configuration (for Image Upload Fallback)
+
+The app supports multiple OCR methods in priority order:
+
+1. **Hugging Face OCR Models** (Recommended - Better Accuracy)
+   - Default model: `nanonets/Nanonets-OCR2-3B`
+   - Alternative: `microsoft/trocr-base-printed`
+   - Automatically uses GPU if available, falls back to CPU
+   - No additional installation needed (uses transformers library)
+
+2. **Tesseract OCR** (Fallback)
+   - Traditional OCR engine
+   - Requires system installation
+
+**Hugging Face OCR (Recommended):**
+
+The Hugging Face model is enabled by default and will be used automatically. The model will be downloaded on first use (may take a few minutes depending on your internet speed).
+
+**Available Models:**
+- `nanonets/Nanonets-OCR2-3B` (Default - Best accuracy, larger model ~6GB)
+- `microsoft/trocr-base-printed` (Smaller, faster, good for printed text ~500MB)
+- `microsoft/trocr-small-printed` (Smallest, fastest ~200MB)
+
+To change the model, update your `.env`:
+
+```env
+HUGGINGFACE_MODEL=nanonets/Nanonets-OCR2-3B
+USE_HUGGINGFACE_OCR=true
+```
+
+**Performance Notes:**
+- First run will download the model (one-time, ~6GB for Nanonets-OCR2-3B)
+- GPU acceleration is automatically used if available
+- CPU inference works but is slower
+- For production, consider using a smaller model like `microsoft/trocr-base-printed` for faster response times
+
+**Tesseract OCR (Optional Fallback):**
+
+If you prefer Tesseract or Hugging Face is unavailable:
+
+**macOS:**
+```bash
+brew install tesseract
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt-get update
+sudo apt-get install tesseract-ocr
+```
+
+**Windows:**
+1. Download the installer from [UB Mannheim Tesseract](https://github.com/UB-Mannheim/tesseract/wiki)
+2. Run the installer and add Tesseract to your PATH
+3. Or if using Chocolatey: `choco install tesseract`
+
+**Verify Installation:**
+```bash
+tesseract --version
+```
+
+**Note:** If Tesseract is installed in a non-standard location, you can configure the path in your `.env` file:
+```env
+TESSERACT_CMD=/path/to/tesseract
+USE_HUGGINGFACE_OCR=false  # Disable Hugging Face to use Tesseract
+```
+
+#### Setting up PNR Lookup API (Recommended)
+
+For the best experience, configure an Indian Railways PNR API:
+
+1. Get a free API key from [Indian Rail API](https://indianrailapi.com) or similar services
+2. Add to your `.env` file:
+```
+INDIAN_RAIL_API_KEY=your_api_key_here
+```
+
+**Note:** The app works without the API key, but PNR lookup will be unavailable. You can still use image upload as a fallback.
+
+#### Ticket Text Parsing Methods
+
+The app supports two methods for parsing ticket text after OCR:
+
+1. **Regex Parsing** (Default - Fast, No API costs)
+   - Uses pattern matching to extract ticket information
+   - Fast and works offline
+   - Handles common ticket formats
+
+2. **OpenAI Parsing** (Optional - Better accuracy for complex formats)
+   - Uses GPT-4o-mini or other OpenAI models
+   - Better at handling OCR errors and unusual formats
+   - Requires OpenAI API key
+
+To enable OpenAI parsing, add to your `.env` file:
+```env
+USE_OPENAI_PARSING=true
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_MODEL=gpt-4o-mini  # or gpt-4o, gpt-3.5-turbo, etc.
+```
+
+**Note:** If OpenAI parsing fails or returns low confidence, the system automatically falls back to regex parsing.
 
 ### Backend Setup
 
@@ -147,7 +251,8 @@ Once the backend is running, visit:
 | `/api/auth/send-otp` | POST | Send OTP to phone |
 | `/api/auth/verify-otp` | POST | Verify OTP & get token |
 | `/api/tickets` | GET/POST | List/Create tickets |
-| `/api/tickets/upload` | POST | Upload ticket image for OCR |
+| `/api/tickets/lookup-pnr` | POST | Fetch ticket details using PNR number (Recommended) |
+| `/api/tickets/upload` | POST | Upload ticket image for OCR (Fallback) |
 | `/api/exchange/find-matches/{ticket_id}` | POST | Find exchange matches |
 | `/api/exchange/request` | POST | Send exchange request |
 | `/api/chat/{exchange_id}` | GET/POST | Chat messages |

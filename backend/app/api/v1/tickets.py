@@ -5,9 +5,11 @@ from datetime import datetime
 from beanie import PydanticObjectId
 
 from app.core.security import get_current_user
+from app.core.config import settings
 from app.models.user import User
 from app.models.ticket import Ticket, Passenger, Station
 from app.services.ocr_service import OCRService
+from app.services.pnr_service import PNRService
 
 router = APIRouter()
 
@@ -47,12 +49,51 @@ class TicketResponse(BaseModel):
     status: str
     is_scattered: bool
 
+class PNRLookupRequest(BaseModel):
+    pnr: str
+
+@router.post("/lookup-pnr")
+async def lookup_pnr(
+    request: PNRLookupRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Fetch ticket details using PNR number (Recommended method)
+    This is more accurate and faster than OCR
+    """
+    try:
+        pnr_service = PNRService(
+            api_key=settings.INDIAN_RAIL_API_KEY,
+            base_url=settings.INDIAN_RAIL_API_URL
+        )
+        extracted_data = await pnr_service.get_ticket_details(request.pnr)
+        
+        return {
+            "message": "PNR details fetched successfully",
+            "data": extracted_data,
+            "confidence": extracted_data.get("confidence", 1.0),
+            "method": "pnr_lookup"
+        }
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch PNR details: {str(e)}"
+        )
+
 @router.post("/upload")
 async def upload_ticket_image(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user)
 ):
-    """Upload ticket image for OCR processing"""
+    """
+    Upload ticket image for OCR processing (Fallback option)
+    Use /lookup-pnr endpoint instead for better accuracy
+    """
     # Validate file type
     allowed_types = ["image/jpeg", "image/png", "image/jpg", "application/pdf"]
     if file.content_type not in allowed_types:
@@ -64,14 +105,22 @@ async def upload_ticket_image(
     # Read file content
     content = await file.read()
     
-    # Process with OCR
-    ocr_service = OCRService()
+    # Process with OCR (uses Hugging Face if available, falls back to Tesseract)
+    ocr_service = OCRService(
+        tesseract_cmd=settings.TESSERACT_CMD,
+        huggingface_model=settings.HUGGINGFACE_MODEL,
+        use_huggingface=settings.USE_HUGGINGFACE_OCR,
+        use_openai_parsing=settings.USE_OPENAI_PARSING,
+        openai_api_key=settings.OPENAI_API_KEY,
+        openai_model=settings.OPENAI_MODEL
+    )
     extracted_data = await ocr_service.extract_ticket_data(content, file.content_type)
     
     return {
         "message": "Ticket processed successfully",
         "data": extracted_data,
-        "confidence": extracted_data.get("confidence", 0)
+        "confidence": extracted_data.get("confidence", 0),
+        "method": "ocr"
     }
 
 @router.post("", response_model=TicketResponse)
