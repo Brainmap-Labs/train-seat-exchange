@@ -1,14 +1,16 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuthStore } from '@/store/authStore'
 import { useDropzone } from 'react-dropzone'
-import { Upload, Image, FileText, Loader2, CheckCircle, AlertCircle, Search, Sparkles } from 'lucide-react'
+import { Image, FileText, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { ticketApi } from '@/services/api'
 
+
+
 type UploadStep = 'input' | 'processing' | 'verify' | 'complete'
-type InputMethod = 'pnr' | 'image'
 
 interface ExtractedData {
   pnr: string
@@ -29,19 +31,22 @@ interface ExtractedData {
 }
 
 export function UploadTicketPage() {
+    const { isAuthenticated } = useAuthStore()
   const navigate = useNavigate()
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login', { replace: true })
+    }
+  }, [isAuthenticated, navigate])
   const [step, setStep] = useState<UploadStep>('input')
-  const [inputMethod, setInputMethod] = useState<InputMethod>('pnr')
-  const [pnr, setPnr] = useState('')
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0]
     if (file) {
-      setUploadedFile(file)
       processTicket(file)
     }
   }, [])
@@ -56,55 +61,12 @@ export function UploadTicketPage() {
     maxSize: 10 * 1024 * 1024, // 10MB
   })
 
-  const processPnr = async () => {
-    if (!pnr || pnr.length !== 10 || !/^\d{10}$/.test(pnr)) {
-      setError('Please enter a valid 10-digit PNR number')
-      return
-    }
 
-    setError(null)
-    setStep('processing')
-    setIsProcessing(true)
-
-    try {
-      const response = await ticketApi.lookupPnr(pnr)
-      const data = response.data.data
-      
-      // Parse station strings (format: "CODE - Name")
-      const [boardingCode, ...boardingNameParts] = (data.boarding_station || '').split(' - ')
-      const [destCode, ...destNameParts] = (data.destination_station || '').split(' - ')
-      
-      setExtractedData({
-        pnr: data.pnr,
-        trainNumber: data.train_number,
-        trainName: data.train_name,
-        travelDate: data.travel_date,
-        boardingStation: data.boarding_station,
-        destinationStation: data.destination_station,
-        classType: data.class_type,
-        passengers: data.passengers.map((p: any) => ({
-          name: p.name || 'Unknown',
-          age: p.age || 0,
-          gender: p.gender || 'M',
-          coach: p.coach,
-          seatNumber: p.seat_number,
-          berthType: p.berth_type,
-        })),
-      })
-
-      setIsProcessing(false)
-      setStep('verify')
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to fetch PNR details. Please try again or use image upload.')
-      setIsProcessing(false)
-      setStep('input')
-    }
-  }
 
   const processTicket = async (file: File) => {
     setError(null)
     setStep('processing')
-    setIsProcessing(true)
+
 
     try {
       const formData = new FormData()
@@ -131,11 +93,11 @@ export function UploadTicketPage() {
         })),
       })
 
-      setIsProcessing(false)
+
       setStep('verify')
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to process image. Please try again.')
-      setIsProcessing(false)
+
       setStep('input')
     }
   }
@@ -143,7 +105,7 @@ export function UploadTicketPage() {
   const handleConfirm = async () => {
     if (!extractedData) return
     
-    setIsProcessing(true)
+
     setError(null)
     
     try {
@@ -241,7 +203,7 @@ export function UploadTicketPage() {
       }
       
       setError(errorMessage)
-      setIsProcessing(false)
+
     }
   }
 
@@ -283,137 +245,39 @@ export function UploadTicketPage() {
       {/* Input Step */}
       {step === 'input' && (
         <div className="space-y-6">
-          {/* Method Selection Tabs */}
-          <div className="flex gap-2 border-b border-slate-200">
-            <button
-              onClick={() => setInputMethod('pnr')}
-              className={`
-                px-6 py-3 font-medium text-sm border-b-2 transition-colors
-                ${inputMethod === 'pnr' 
-                  ? 'border-railway-blue text-railway-blue' 
-                  : 'border-transparent text-slate-500 hover:text-slate-700'}
-              `}
-            >
-              <div className="flex items-center gap-2">
-                <Search className="w-4 h-4" />
-                PNR Number
-                <span className="ml-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">Recommended</span>
+          {/* Only show image upload method */}
+          <Card>
+            <CardContent className="p-8">
+              {error && (
+                <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4 flex gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                  <p className="text-sm text-red-700">{error}</p>
+                </div>
+              )}
+              <div
+                {...getRootProps()}
+                className={`
+                  border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-colors
+                  ${isDragActive ? 'border-primary-500 bg-primary-50' : 'border-slate-300 hover:border-primary-400'}
+                `}
+              >
+                <input {...getInputProps()} />
+                <div className="flex justify-center gap-4 mb-4">
+                  <Image className="w-12 h-12 text-slate-400" />
+                  <FileText className="w-12 h-12 text-slate-400" />
+                </div>
+                <h3 className="font-semibold text-lg text-slate-900 mb-2">
+                  {isDragActive ? 'Drop your ticket here' : 'Drag & drop your ticket'}
+                </h3>
+                <p className="text-slate-600 mb-4">
+                  or click to browse from your device
+                </p>
+                <p className="text-sm text-slate-500">
+                  Supports: JPEG, PNG, PDF (max 10MB)
+                </p>
               </div>
-            </button>
-            <button
-              onClick={() => setInputMethod('image')}
-              className={`
-                px-6 py-3 font-medium text-sm border-b-2 transition-colors
-                ${inputMethod === 'image' 
-                  ? 'border-railway-blue text-railway-blue' 
-                  : 'border-transparent text-slate-500 hover:text-slate-700'}
-              `}
-            >
-              <div className="flex items-center gap-2">
-                <Upload className="w-4 h-4" />
-                Upload Image
-              </div>
-            </button>
-          </div>
-
-          {/* PNR Input */}
-          {inputMethod === 'pnr' && (
-            <Card>
-              <CardContent className="p-8">
-                <div className="max-w-md mx-auto space-y-4">
-                  <div className="flex items-center gap-2 text-green-600 mb-4">
-                    <Sparkles className="w-5 h-5" />
-                    <p className="text-sm font-medium">Faster and more accurate than OCR</p>
-                  </div>
-                  
-                  <Input
-                    label="PNR Number"
-                    type="text"
-                    placeholder="Enter 10-digit PNR number"
-                    value={pnr}
-                    onChange={(e) => {
-                      const value = e.target.value.replace(/\D/g, '').slice(0, 10)
-                      setPnr(value)
-                      setError(null)
-                    }}
-                    maxLength={10}
-                  />
-                  
-                  {error && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex gap-3">
-                      <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-                      <p className="text-sm text-red-700">{error}</p>
-                    </div>
-                  )}
-                  
-                  <Button 
-                    onClick={processPnr} 
-                    disabled={pnr.length !== 10 || isProcessing}
-                    className="w-full"
-                  >
-                    {isProcessing ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Fetching Details...
-                      </>
-                    ) : (
-                      <>
-                        <Search className="w-4 h-4 mr-2" />
-                        Fetch Ticket Details
-                      </>
-                    )}
-                  </Button>
-                  
-                  <p className="text-xs text-slate-500 text-center">
-                    Your PNR number is on your e-ticket or SMS from IRCTC
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Image Upload */}
-          {inputMethod === 'image' && (
-            <Card>
-              <CardContent className="p-8">
-                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <p className="text-sm text-amber-800">
-                    <strong>Tip:</strong> Using PNR number is faster and more accurate. Try the PNR method first!
-                  </p>
-                </div>
-                
-                {error && (
-                  <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4 flex gap-3">
-                    <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-                    <p className="text-sm text-red-700">{error}</p>
-                  </div>
-                )}
-                
-                <div
-                  {...getRootProps()}
-                  className={`
-                    border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-colors
-                    ${isDragActive ? 'border-primary-500 bg-primary-50' : 'border-slate-300 hover:border-primary-400'}
-                  `}
-                >
-                  <input {...getInputProps()} />
-                  <div className="flex justify-center gap-4 mb-4">
-                    <Image className="w-12 h-12 text-slate-400" />
-                    <FileText className="w-12 h-12 text-slate-400" />
-                  </div>
-                  <h3 className="font-semibold text-lg text-slate-900 mb-2">
-                    {isDragActive ? 'Drop your ticket here' : 'Drag & drop your ticket'}
-                  </h3>
-                  <p className="text-slate-600 mb-4">
-                    or click to browse from your device
-                  </p>
-                  <p className="text-sm text-slate-500">
-                    Supports: JPEG, PNG, PDF (max 10MB)
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -497,8 +361,8 @@ export function UploadTicketPage() {
             <Button variant="outline" onClick={() => {
               setStep('input')
               setExtractedData(null)
-              setPnr('')
-              setUploadedFile(null)
+
+              // setUploadedFile(null) removed
               setError(null)
             }} className="flex-1">
               Start Over
