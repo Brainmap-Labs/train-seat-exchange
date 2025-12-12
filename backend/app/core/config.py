@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     FIREBASE_CREDENTIALS_PATH: str = "firebase-credentials.json"
     
     # CORS - can be comma-separated string in .env or list
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
+    CORS_ORIGINS: str = "http://localhost:3000,https://train-seat-exchange.vercel.app/"
     
     # OCR (fallback option)
     # Hugging Face OCR Model (recommended for better accuracy)
