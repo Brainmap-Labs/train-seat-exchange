@@ -36,7 +36,17 @@ export function DashboardPage() {
         classType: t.class_type,
         quota: t.quota || 'GN',
         status: t.status || 'active',
-        passengers: t.passengers || [],
+        passengers: (t.passengers || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          age: p.age,
+          gender: p.gender,
+          coach: p.coach,
+          seatNumber: p.seatNumber !== undefined ? p.seatNumber : p.seat_number,
+          berthType: p.berthType || p.berth_type,
+          bookingStatus: p.bookingStatus || p.booking_status,
+          currentStatus: p.currentStatus || p.current_status,
+        })),
         createdAt: new Date(t.created_at || Date.now()),
         updatedAt: new Date(t.updated_at || Date.now()),
       }))

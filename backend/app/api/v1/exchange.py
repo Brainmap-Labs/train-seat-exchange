@@ -1,12 +1,15 @@
 from fastapi import APIRouter, HTTPException, status, Depends, Query
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 from beanie import PydanticObjectId
 
 from app.core.security import get_current_user
+from app.core.security import get_admin_user
 from app.models.user import User
 from app.models.ticket import Ticket
+from app.models.match import MatchSuggestion
 from app.models.exchange import ExchangeRequest, ExchangeProposal, SeatInfo
 from app.services.matching_service import MatchingService
 
@@ -46,8 +49,21 @@ async def find_exchange_matches(
             detail="Ticket not found"
         )
     
-    # Find matches using the matching service
     matching_service = MatchingService()
+
+    # If there are stored suggestions for this ticket and preferences do not force live, return stored
+    stored = await MatchSuggestion.find_one(MatchSuggestion.ticket_id == str(ticket.id))
+    if stored and not (preferences and getattr(preferences, "berth_type_preferences", None)):
+        # Return stored suggestions as prepopulated result
+        return {
+            "ticket_id": ticket_id,
+            "matches": stored.suggestions,
+            "total_matches": len(stored.suggestions),
+            "prepopulated": True,
+            "ai_enhanced": False
+        }
+
+    # Otherwise compute live
     matches = await matching_service.find_matches(
         ticket=ticket,
         preferences=preferences.model_dump() if preferences else {},
@@ -60,6 +76,263 @@ async def find_exchange_matches(
         "total_matches": len(matches),
         "ai_enhanced": use_ai_enhancement
     }
+
+
+@router.post("/admin/run-matching")
+async def admin_run_matching(
+    train_number: Optional[str] = Query(None),
+    travel_date: Optional[datetime] = Query(None),
+    min_store_score: float = Query(60.0, description="Minimum score to store suggestion"),
+    current_admin: bool = Depends(get_admin_user)
+):
+    """Admin endpoint to run matching across tickets and store good suggestions.
+
+    If `train_number` and `travel_date` are provided, limit to that trip; otherwise run for all active tickets.
+    Stores suggestions with `match_score >= min_store_score` in `match_suggestions` collection.
+    """
+    # Fetch tickets to process
+    query = {}
+    if train_number:
+        query["train_number"] = train_number
+    if travel_date:
+        query["travel_date"] = travel_date
+
+    tickets = await Ticket.find({}).to_list() if not query else await Ticket.find(
+        Ticket.train_number == train_number,
+        Ticket.travel_date == travel_date,
+        Ticket.status == "active"
+    ).to_list()
+
+    matching_service = MatchingService()
+
+    stored_count = 0
+    for ticket in tickets:
+        t_id = str(ticket.id)
+        # Build preferences from ticket fields
+        prefs = {
+            "preferred_berth": ticket.preferred_berth or [],
+            "allow_cyclic": ticket.allow_cyclic,
+            "same_coach_only": ticket.same_coach_only,
+            "same_bay_only": ticket.same_bay_only,
+        }
+        matches = await matching_service.find_matches(ticket=ticket, preferences=prefs)
+        # Keep only suggestions >= min_store_score
+        to_store = [m for m in matches if m.get("match_score", 0) >= min_store_score]
+        if not to_store:
+            # remove any existing stored suggestions
+            existing = await MatchSuggestion.find_one(MatchSuggestion.ticket_id == t_id)
+            if existing:
+                await existing.delete()
+            continue
+
+        # Persist suggestions
+        suggestion = await MatchSuggestion.find_one(MatchSuggestion.ticket_id == t_id)
+        payload = [
+            {
+                "ticket_id": m.get("ticket_id", t_id),
+                "other_ticket_id": m.get("ticket_id"),
+                "user_id": m.get("user_id"),
+                "user_name": m.get("user_name"),
+                "match_score": m.get("match_score"),
+                "benefit_description": m.get("benefit_description"),
+                "available_seats": m.get("available_seats"),
+                "type": m.get("type", "pairwise"),
+            }
+            for m in to_store
+        ]
+        if suggestion:
+            suggestion.suggestions = payload
+            suggestion.source = "admin_run"
+            suggestion.created_at = suggestion.created_at
+            await suggestion.save()
+        else:
+            suggestion = MatchSuggestion(
+                ticket_id=t_id,
+                train_number=ticket.train_number,
+                travel_date=ticket.travel_date,
+                suggestions=payload,
+                source="admin_run",
+            )
+            await suggestion.insert()
+
+        stored_count += 1
+
+    return {"processed_tickets": len(tickets), "stored_suggestions": stored_count}
+
+
+@router.post("/admin/run-global-matching")
+async def admin_run_global_matching(
+        train_number: str = Query(...),
+        travel_date: datetime = Query(...),
+        min_store_score: float = Query(60.0),
+        time_limit: int = Query(30, description="ILP time limit seconds"),
+        current_admin: bool = Depends(get_admin_user)
+):
+        """Run a global ILP optimizer across all tickets for a train+date and store cycle suggestions."""
+        tickets = await Ticket.find(
+                Ticket.train_number == train_number,
+                Ticket.travel_date == travel_date,
+                Ticket.status == "active",
+        ).to_list()
+
+        matching_service = MatchingService()
+        cycles = matching_service.global_cycle_ilp(tickets, {}, time_limit_seconds=time_limit)
+
+        stored = 0
+        for cyc in cycles:
+                # persist each ticket's suggestion from cycle
+                cycle_ticket_ids = [str(t.id) for t in cyc["tickets"]]
+                total = cyc.get("total_score", 0)
+                if total < min_store_score:
+                        continue
+                # create payload entries for each ticket
+                for t in cyc["tickets"]:
+                        t_id = str(t.id)
+                        payload = [{
+                                "ticket_id": t_id,
+                                "cycle_tickets": cycle_ticket_ids,
+                                "match_score": total,
+                                "benefit_description": cyc.get("description"),
+                                "type": "global_cycle",
+                        }]
+                        suggestion = await MatchSuggestion.find_one(MatchSuggestion.ticket_id == t_id)
+                        if suggestion:
+                                suggestion.suggestions = payload
+                                suggestion.source = "admin_global_ilp"
+                                await suggestion.save()
+                        else:
+                                suggestion = MatchSuggestion(
+                                        ticket_id=t_id,
+                                        train_number=train_number,
+                                        travel_date=travel_date,
+                                        suggestions=payload,
+                                        source="admin_global_ilp",
+                                )
+                                await suggestion.insert()
+                stored += len(cycle_ticket_ids)
+
+        return {"cycles_found": len(cycles), "tickets_updated": stored}
+
+
+@router.post("/admin/preview-global-matching")
+async def admin_preview_global_matching(
+        train_number: str = Query(...),
+        travel_date: datetime = Query(...),
+        time_limit: int = Query(30, description="ILP time limit seconds"),
+        current_admin: bool = Depends(get_admin_user)
+    ):
+        """Preview ILP-selected cycles for a train+date without persisting."""
+        tickets = await Ticket.find(
+            Ticket.train_number == train_number,
+            Ticket.travel_date == travel_date,
+            Ticket.status == "active",
+        ).to_list()
+
+        matching_service = MatchingService()
+        cycles = matching_service.global_cycle_ilp(tickets, {}, time_limit_seconds=time_limit)
+
+        # Return lightweight info
+        out = []
+        for cyc in cycles:
+            out.append({
+                "ticket_ids": [str(t.id) for t in cyc["tickets"]],
+                "total_score": cyc["total_score"],
+                "description": cyc.get("description"),
+                "length": len(cyc["tickets"]),
+            })
+
+        return {"cycles": out, "count": len(out)}
+
+
+@router.get("/admin/available-trips")
+async def admin_available_trips(current_admin: bool = Depends(get_admin_user)):
+        """Return list of available train_number + travel_date combos from active tickets."""
+        tickets = await Ticket.find(Ticket.status == "active").to_list()
+        combos = {}
+        for t in tickets:
+            combos.setdefault(t.train_number, set()).add(t.travel_date.isoformat())
+
+        out = []
+        for train, dates in combos.items():
+            out.append({"train_number": train, "dates": sorted(list(dates))})
+
+        return {"trips": out}
+
+
+@router.get("/admin/ui")
+async def admin_ui(current_admin: bool = Depends(get_admin_user)):
+        html = """
+        <!doctype html>
+        <html>
+        <head><title>Admin Matching</title></head>
+        <body>
+            <h1>Admin Matching Console</h1>
+            <div>
+                <h3>Run matching (per-ticket)</h3>
+                <button id="run">Run Matching</button>
+            </div>
+            <div>
+                <h3>Run global ILP matching</h3>
+                <label>Train number: <input id="train" value="12301"></label>
+                <label>Travel date (ISO): <input id="date" value=""></label>
+                <button id="run-global">Run Global ILP</button>
+            </div>
+            <div>
+                <h3>View stored matches for ticket</h3>
+                <input id="ticket" placeholder="ticket id">
+                <button id="view">View</button>
+                <pre id="out"></pre>
+            </div>
+            <script>
+                document.getElementById('run-global').addEventListener('click', async ()=>{
+                    const train = document.getElementById('train').value;
+                    const date = document.getElementById('date').value;
+                    if(!train || !date){alert('Provide train and date');return}
+                    const res = await fetch('/api/admin/run-global-matching?train_number='+encodeURIComponent(train)+'&travel_date='+encodeURIComponent(date),{method:'POST', headers:{'X-Admin-Key': prompt('Admin key')} });
+                    const j = await res.json();
+                    document.getElementById('out').innerText = JSON.stringify(j, null, 2);
+                })
+
+                document.getElementById('view').addEventListener('click', async ()=>{
+                    const t = document.getElementById('ticket').value;
+                    if(!t){alert('Ticket id required');return}
+                    const res = await fetch('/api/admin/matches/'+encodeURIComponent(t),{headers:{'X-Admin-Key': prompt('Admin key')}});
+                    const j = await res.json();
+                    document.getElementById('out').innerText = JSON.stringify(j, null, 2);
+                })
+            </script>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=html, status_code=200)
+
+
+@router.get("/admin/matches/{ticket_id}")
+async def admin_get_stored_matches(ticket_id: str, current_admin: bool = Depends(get_admin_user)):
+    suggestion = await MatchSuggestion.find_one(MatchSuggestion.ticket_id == ticket_id)
+    if not suggestion:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No stored suggestions")
+    return {"ticket_id": ticket_id, "matches": suggestion.suggestions, "count": len(suggestion.suggestions)}
+
+
+@router.post("/tickets/{ticket_id}/preferences")
+async def update_ticket_preferences(
+    ticket_id: str,
+    prefs: ExchangePreferences,
+    current_user: User = Depends(get_current_user)
+):
+    """Update ticket-level matching preferences and optionally rerun matching."""
+    ticket = await Ticket.get(PydanticObjectId(ticket_id))
+    if not ticket or ticket.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+
+    ticket.preferred_berth = prefs.berth_type_preferences or None
+    ticket.same_coach_only = prefs.same_coach_only
+    ticket.same_bay_only = prefs.same_bay_only
+    ticket.allow_cyclic = False
+    await ticket.save()
+
+    return {"message": "Preferences updated", "ticket_id": ticket_id}
 
 @router.post("/batch-find-matches")
 async def batch_find_matches(

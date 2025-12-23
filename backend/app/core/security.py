@@ -6,6 +6,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.core.config import settings
 from app.models.user import User
+from fastapi import Request
+from app.core.config import settings
 
 # Make HTTPBearer auto_error=False to handle errors manually
 security = HTTPBearer(auto_error=False)
@@ -73,4 +75,25 @@ async def get_current_user(
         )
     
     return user
+
+
+async def get_admin_user(request: Request) -> bool:
+    """Simple admin check using an admin API key header X-Admin-Key.
+
+    Returns True if header matches settings.ADMIN_API_KEY, otherwise raises 401.
+    """
+    admin_key = request.headers.get("X-Admin-Key")
+    if not admin_key or not getattr(settings, "ADMIN_API_KEY", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Admin authentication required"
+        )
+
+    if admin_key != settings.ADMIN_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid admin key"
+        )
+
+    return True
 

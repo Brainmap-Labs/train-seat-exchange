@@ -14,6 +14,20 @@ import os
 BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 API_PREFIX = "/api"
 
+
+def berth_from_seat(seat_number: int) -> str:
+    """Return berth type based on Indian Railways seat number modulo 8."""
+    mod = seat_number % 8
+    if mod == 1 or mod == 4:
+        return "LB"
+    if mod == 2 or mod == 5:
+        return "MB"
+    if mod == 3 or mod == 6:
+        return "UB"
+    if mod == 7:
+        return "SL"
+    return "SU"
+
 class ExchangePOCClient:
     """Test client for Exchange POC"""
     
@@ -149,193 +163,65 @@ def create_scattered_tickets():
     # All tickets on the same train for matching
     train_number = "12301"
     train_name = "HOWRAH RAJDHANI EXPRESS"
-    
+
     client = ExchangePOCClient()
-    
+
     print("\n" + "="*60)
     print("EXCHANGE MATCHING POC - SETUP")
     print("="*60)
-    
-    # Create 3 users
-    user1 = client.create_user_and_authenticate("9876543210", "Rahul Kumar")
-    user2 = client.create_user_and_authenticate("9876543211", "Priya Sharma")
-    user3 = client.create_user_and_authenticate("9876543212", "Amit Patel")
-    
+
     print(f"\n{'='*60}")
-    print("CREATING TICKETS WITH SCATTERED SEATS")
+    print("CREATING 10 USERS WITH SINGLE TICKETS (1-5 PASSENGERS)")
     print(f"{'='*60}")
+
+    users_map = {}
+    coaches = ["B1", "B2", "B3", "B4", "B5"]
+
+    # Create 10 users, each with 1-5 passengers (tickets)
+    for i in range(10):
+        phone = f"98765432{10 + i}"
+        name = f"User {i+1}"
+        user = client.create_user_and_authenticate(phone, name)
+
+        # Determine number of passengers for this user's ticket (1..5)
+        passenger_count = (i % 5) + 1
+
+        passengers = []
+        for j in range(passenger_count):
+            coach = coaches[j % len(coaches)]
+            seat_number = 10 * (j + 1) + (i % 9)
+            berth = berth_from_seat(seat_number)
+            passengers.append({
+                "name": f"Passenger {i+1}-{j+1}",
+                "age": 20 + ((i + j) % 50),
+                "gender": "M" if (j % 2 == 0) else "F",
+                "coach": coach,
+                "seat_number": seat_number,
+                "berth_type": berth,
+                "booking_status": "CNF",
+                "current_status": "CNF",
+            })
+
+        pnr = f"PNR{1000 + i}"
+        ticket = client.create_ticket(
+            user_id=user["user_id"],
+            pnr=pnr,
+            train_number=train_number,
+            train_name=train_name,
+            travel_date=travel_date,
+            boarding_station_code="NDLS",
+            boarding_station_name="NEW DELHI",
+            destination_station_code="HWH",
+            destination_station_name="HOWRAH JUNCTION",
+            class_type="3A",
+            passengers=passengers,
+        )
+
+        client.print_ticket_summary(ticket, user['user_data']['name'])
+
+        users_map[f"user{i+1}"] = {"user": user, "tickets": [ticket]}
     
-    # User 1: Family with scattered seats (B2/45, B2/47, B3/12)
-    print(f"\n📋 User 1: {user1['user_data']['name']}")
-    ticket1_1 = client.create_ticket(
-        user_id=user1["user_id"],
-        pnr="5521678901",
-        train_number=train_number,
-        train_name=train_name,
-        travel_date=travel_date,
-        boarding_station_code="NDLS",
-        boarding_station_name="NEW DELHI",
-        destination_station_code="HWH",
-        destination_station_name="HOWRAH JUNCTION",
-        class_type="3A",
-        passengers=[
-            {"name": "Rahul Kumar", "age": 35, "gender": "M", "coach": "B2", "seat_number": 45, "berth_type": "LB", "booking_status": "CNF", "current_status": "CNF"},
-            {"name": "Priya Kumar", "age": 32, "gender": "F", "coach": "B2", "seat_number": 47, "berth_type": "MB", "booking_status": "CNF", "current_status": "CNF"},
-            {"name": "Aryan Kumar", "age": 8, "gender": "M", "coach": "B3", "seat_number": 12, "berth_type": "UB", "booking_status": "CNF", "current_status": "CNF"},
-        ]
-    )
-    client.print_ticket_summary(ticket1_1, user1['user_data']['name'])
-    
-    # ticket1_2 = client.create_ticket(
-    #     user_id=user1["user_id"],
-    #     pnr="4521678902",
-    #     train_number=train_number,
-    #     train_name=train_name,
-    #     travel_date=travel_date,
-    #     boarding_station_code="NDLS",
-    #     boarding_station_name="NEW DELHI",
-    #     destination_station_code="HWH",
-    #     destination_station_name="HOWRAH JUNCTION",
-    #     class_type="3A",
-    #     passengers=[
-    #         {"name": "Rahul Kumar", "age": 35, "gender": "M", "coach": "B1", "seat_number": 20, "berth_type": "LB", "booking_status": "CNF", "current_status": "CNF"},
-    #         {"name": "Priya Kumar", "age": 32, "gender": "F", "coach": "B1", "seat_number": 22, "berth_type": "MB", "booking_status": "CNF", "current_status": "CNF"},
-    #     ]
-    # )
-    # client.print_ticket_summary(ticket1_2, user1['user_data']['name'])
-    
-    # ticket1_3 = client.create_ticket(
-    #     user_id=user1["user_id"],
-    #     pnr="4521678903",
-    #     train_number=train_number,
-    #     train_name=train_name,
-    #     travel_date=travel_date,
-    #     boarding_station_code="NDLS",
-    #     boarding_station_name="NEW DELHI",
-    #     destination_station_code="HWH",
-    #     destination_station_name="HOWRAH JUNCTION",
-    #     class_type="3A",
-    #     passengers=[
-    #         {"name": "Rahul Kumar", "age": 35, "gender": "M", "coach": "B4", "seat_number": 60, "berth_type": "UB", "booking_status": "CNF", "current_status": "CNF"},
-    #     ]
-    # )
-    # client.print_ticket_summary(ticket1_3, user1['user_data']['name'])
-    
-    # User 2: Family with scattered seats (B2/46, B3/11, B3/13)
-    print(f"\n📋 User 2: {user2['user_data']['name']}")
-    ticket2_1 = client.create_ticket(
-        user_id=user2["user_id"],
-        pnr="4521678904",
-        train_number=train_number,
-        train_name=train_name,
-        travel_date=travel_date,
-        boarding_station_code="NDLS",
-        boarding_station_name="NEW DELHI",
-        destination_station_code="HWH",
-        destination_station_name="HOWRAH JUNCTION",
-        class_type="3A",
-        passengers=[
-            {"name": "Priya Sharma", "age": 28, "gender": "F", "coach": "B2", "seat_number": 46, "berth_type": "LB", "booking_status": "CNF", "current_status": "CNF"},
-            {"name": "Rohan Sharma", "age": 30, "gender": "M", "coach": "B3", "seat_number": 11, "berth_type": "LB", "booking_status": "CNF", "current_status": "CNF"},
-            {"name": "Meera Sharma", "age": 5, "gender": "F", "coach": "B3", "seat_number": 13, "berth_type": "MB", "booking_status": "CNF", "current_status": "CNF"},
-        ]
-    )
-    client.print_ticket_summary(ticket2_1, user2['user_data']['name'])
-    
-    # ticket2_2 = client.create_ticket(
-    #     user_id=user2["user_id"],
-    #     pnr="4521678905",
-    #     train_number=train_number,
-    #     train_name=train_name,
-    #     travel_date=travel_date,
-    #     boarding_station_code="NDLS",
-    #     boarding_station_name="NEW DELHI",
-    #     destination_station_code="HWH",
-    #     destination_station_name="HOWRAH JUNCTION",
-    #     class_type="3A",
-    #     passengers=[
-    #         {"name": "Priya Sharma", "age": 28, "gender": "F", "coach": "B1", "seat_number": 21, "berth_type": "MB", "booking_status": "CNF", "current_status": "CNF"},
-    #     ]
-    # )
-    # client.print_ticket_summary(ticket2_2, user2['user_data']['name'])
-    
-    # ticket2_3 = client.create_ticket(
-    #     user_id=user2["user_id"],
-    #     pnr="4521678906",
-    #     train_number=train_number,
-    #     train_name=train_name,
-    #     travel_date=travel_date,
-    #     boarding_station_code="NDLS",
-    #     boarding_station_name="NEW DELHI",
-    #     destination_station_code="HWH",
-    #     destination_station_name="HOWRAH JUNCTION",
-    #     class_type="3A",
-    #     passengers=[
-    #         {"name": "Rohan Sharma", "age": 30, "gender": "M", "coach": "B5", "seat_number": 70, "berth_type": "SL", "booking_status": "CNF", "current_status": "CNF"},
-    #     ]
-    # )
-    # client.print_ticket_summary(ticket2_3, user2['user_data']['name'])
-    
-    # User 3: Family with scattered seats (B2/48, B3/10, B3/14)
-    print(f"\n📋 User 3: {user3['user_data']['name']}")
-    ticket3_1 = client.create_ticket(
-        user_id=user3["user_id"],
-        pnr="4521678907",
-        train_number=train_number,
-        train_name=train_name,
-        travel_date=travel_date,
-        boarding_station_code="NDLS",
-        boarding_station_name="NEW DELHI",
-        destination_station_code="HWH",
-        destination_station_name="HOWRAH JUNCTION",
-        class_type="3A",
-        passengers=[
-            {"name": "Amit Patel", "age": 40, "gender": "M", "coach": "B2", "seat_number": 48, "berth_type": "UB", "booking_status": "CNF", "current_status": "CNF"},
-            {"name": "Sneha Patel", "age": 38, "gender": "F", "coach": "B3", "seat_number": 10, "berth_type": "LB", "booking_status": "CNF", "current_status": "CNF"},
-            {"name": "Arjun Patel", "age": 12, "gender": "M", "coach": "B3", "seat_number": 14, "berth_type": "UB", "booking_status": "CNF", "current_status": "CNF"},
-        ]
-    )
-    client.print_ticket_summary(ticket3_1, user3['user_data']['name'])
-    
-    # ticket3_2 = client.create_ticket(
-    #     user_id=user3["user_id"],
-    #     pnr="4521678908",
-    #     train_number=train_number,
-    #     train_name=train_name,
-    #     travel_date=travel_date,
-    #     boarding_station_code="NDLS",
-    #     boarding_station_name="NEW DELHI",
-    #     destination_station_code="HWH",
-    #     destination_station_name="HOWRAH JUNCTION",
-    #     class_type="3A",
-    #     passengers=[
-    #         {"name": "Amit Patel", "age": 40, "gender": "M", "coach": "B1", "seat_number": 23, "berth_type": "UB", "booking_status": "CNF", "current_status": "CNF"},
-    #     ]
-    # )
-    # client.print_ticket_summary(ticket3_2, user3['user_data']['name'])
-    
-    # ticket3_3 = client.create_ticket(
-    #     user_id=user3["user_id"],
-    #     pnr="4521678909",
-    #     train_number=train_number,
-    #     train_name=train_name,
-    #     travel_date=travel_date,
-    #     boarding_station_code="NDLS",
-    #     boarding_station_name="NEW DELHI",
-    #     destination_station_code="HWH",
-    #     destination_station_name="HOWRAH JUNCTION",
-    #     class_type="3A",
-    #     passengers=[
-    #         {"name": "Sneha Patel", "age": 38, "gender": "F", "coach": "B6", "seat_number": 80, "berth_type": "SL", "booking_status": "CNF", "current_status": "CNF"},
-    #     ]
-    # )
-    # client.print_ticket_summary(ticket3_3, user3['user_data']['name'])
-    
-    return client, {
-        "user1": {"user": user1, "tickets": [ticket1_1]},
-        "user2": {"user": user2, "tickets": [ticket2_1]},
-        "user3": {"user": user3, "tickets": [ticket3_1]},
-    }
+    return client, users_map
 
 
 def test_exchange_matching(client: ExchangePOCClient, users_data: Dict):
@@ -345,100 +231,48 @@ def test_exchange_matching(client: ExchangePOCClient, users_data: Dict):
     print("TESTING EXCHANGE MATCHING ALGORITHM")
     print("="*60)
     
-    # Test 1: User 1's first ticket (B2/45, B2/47, B3/12) - should find matches
-    print(f"\n{'='*60}")
-    print("TEST 1: User 1 - Ticket 1 (Family scattered: B2/45, B2/47, B3/12)")
-    print(f"{'='*60}")
-    ticket1_1 = users_data["user1"]["tickets"][0]
-    user1_id = users_data["user1"]["user"]["user_id"]
-    
-    print(f"\n🔍 Searching for exchange matches...")
-    matches_result = client.find_matches(user1_id, ticket1_1["id"])
-    
-    print(f"\n✓ Found {matches_result.get('total_matches', 0)} potential matches")
-    matches = matches_result.get("matches", [])
-    
-    if matches:
-        print(f"\n📊 Match Results:")
-        for i, match in enumerate(matches, 1):
-            print(f"\n  Match #{i}:")
-            print(f"    User: {match.get('user_name', 'Unknown')} (Rating: {match.get('user_rating', 0)})")
-            print(f"    Match Score: {match.get('match_score', 0)}%")
-            print(f"    Benefit: {match.get('benefit_description', 'N/A')}")
-            print(f"    Available Seats:")
-            for seat in match.get('available_seats', []):
-                print(f"      - {seat.get('passenger_name', 'Unknown')}: {seat.get('coach')}/{seat.get('seat_number')}/{seat.get('berth_type')}")
-    else:
-        print("  ❌ No matches found")
-    
-    # Test 2: User 2's first ticket (B2/46, B3/11, B3/13) - should find matches with User 1
-    print(f"\n{'='*60}")
-    print("TEST 2: User 2 - Ticket 1 (Family scattered: B2/46, B3/11, B3/13)")
-    print(f"{'='*60}")
-    ticket2_1 = users_data["user2"]["tickets"][0]
-    user2_id = users_data["user2"]["user"]["user_id"]
-    
-    print(f"\n🔍 Searching for exchange matches...")
-    matches_result = client.find_matches(user2_id, ticket2_1["id"])
-    
-    print(f"\n✓ Found {matches_result.get('total_matches', 0)} potential matches")
-    matches = matches_result.get("matches", [])
-    
-    if matches:
-        print(f"\n📊 Match Results:")
-        for i, match in enumerate(matches, 1):
-            print(f"\n  Match #{i}:")
-            print(f"    User: {match.get('user_name', 'Unknown')} (Rating: {match.get('user_rating', 0)})")
-            print(f"    Match Score: {match.get('match_score', 0)}%")
-            print(f"    Benefit: {match.get('benefit_description', 'N/A')}")
-            print(f"    Available Seats:")
-            for seat in match.get('available_seats', []):
-                print(f"      - {seat.get('passenger_name', 'Unknown')}: {seat.get('coach')}/{seat.get('seat_number')}/{seat.get('berth_type')}")
-    else:
-        print("  ❌ No matches found")
-    
-    # Test 3: User 3's first ticket (B2/48, B3/10, B3/14) - should find matches
-    print(f"\n{'='*60}")
-    print("TEST 3: User 3 - Ticket 1 (Family scattered: B2/48, B3/10, B3/14)")
-    print(f"{'='*60}")
-    ticket3_1 = users_data["user3"]["tickets"][0]
-    user3_id = users_data["user3"]["user"]["user_id"]
-    
-    print(f"\n🔍 Searching for exchange matches...")
-    matches_result = client.find_matches(user3_id, ticket3_1["id"])
-    
-    print(f"\n✓ Found {matches_result.get('total_matches', 0)} potential matches")
-    matches = matches_result.get("matches", [])
-    
-    if matches:
-        print(f"\n📊 Match Results:")
-        for i, match in enumerate(matches, 1):
-            print(f"\n  Match #{i}:")
-            print(f"    User: {match.get('user_name', 'Unknown')} (Rating: {match.get('user_rating', 0)})")
-            print(f"    Match Score: {match.get('match_score', 0)}%")
-            print(f"    Benefit: {match.get('benefit_description', 'N/A')}")
-            print(f"    Available Seats:")
-            for seat in match.get('available_seats', []):
-                print(f"      - {seat.get('passenger_name', 'Unknown')}: {seat.get('coach')}/{seat.get('seat_number')}/{seat.get('berth_type')}")
-    else:
-        print("  ❌ No matches found")
-    
+    print("\n" + "="*60)
+    print("TESTING EXCHANGE MATCHING ALGORITHM FOR ALL USERS")
+    print("="*60)
+
+    for idx, user_key in enumerate(sorted(users_data.keys()), start=1):
+        entry = users_data[user_key]
+        ticket = entry["tickets"][0]
+        user_id = entry["user"]["user_id"]
+
+        print(f"\n{'='*60}")
+        print(f"TEST {idx}: {entry['user']['user_data']['name']} - Ticket {ticket.get('pnr', ticket.get('id'))}")
+        print(f"{'='*60}")
+
+        print(f"\n🔍 Searching for exchange matches...")
+        matches_result = client.find_matches(user_id, ticket["id"])
+
+        total = matches_result.get('total_matches', 0)
+        print(f"\n✓ Found {total} potential matches")
+        matches = matches_result.get("matches", [])
+
+        if matches:
+            print(f"\n📊 Top Matches (up to 5):")
+            for i, match in enumerate(matches[:5], 1):
+                print(f"\n  Match #{i}:")
+                print(f"    User: {match.get('user_name', 'Unknown')} (Rating: {match.get('user_rating', 0)})")
+                print(f"    Match Score: {match.get('match_score', 0)}%")
+                print(f"    Benefit: {match.get('benefit_description', 'N/A')}")
+                print(f"    Available Seats:")
+                for seat in match.get('available_seats', []):
+                    print(f"      - {seat.get('passenger_name', 'Unknown')}: {seat.get('coach')}/{seat.get('seat_number')}/{seat.get('berth_type')}")
+        else:
+            print("  ❌ No matches found")
+
     # Summary
     print(f"\n{'='*60}")
     print("POC SUMMARY")
     print(f"{'='*60}")
-    print(f"✓ Created 3 users with 9 tickets total")
-    print(f"✓ All tickets have scattered seats (different coaches/bays)")
-    print(f"✓ All tickets are on the same train ({ticket1_1['train_number']} - {ticket1_1['train_name']})")
-    print(f"✓ All tickets have the same travel date")
-    print(f"✓ Tested matching algorithm for 3 different tickets")
-    print(f"\n💡 Potential Exchange Opportunities:")
-    print(f"  - User 1 (B2/45, B2/47, B3/12) ↔ User 2 (B2/46, B3/11, B3/13)")
-    print(f"    → Could exchange B3/12 ↔ B3/11 to bring families together")
-    print(f"  - User 1 (B2/45, B2/47) ↔ User 2 (B2/46)")
-    print(f"    → Could exchange to get adjacent seats in B2")
-    print(f"  - User 1 (B2/45, B2/47, B3/12) ↔ User 3 (B2/48, B3/10, B3/14)")
-    print(f"    → Could exchange B2/48 ↔ B3/12 to consolidate in B2")
+    print(f"✓ Created {len(users_data)} users each with one ticket")
+    print(f"✓ Tickets have 1-5 passengers each")
+    sample_ticket = next(iter(users_data.values()))['tickets'][0]
+    print(f"✓ All tickets are on the same train ({sample_ticket['train_number']} - {sample_ticket['train_name']})")
+    print(f"\n💡 Tip: Review match details above to spot good exchange opportunities.")
 
 
 def main():

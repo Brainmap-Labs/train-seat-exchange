@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     FIREBASE_CREDENTIALS_PATH: str = "firebase-credentials.json"
     
     # CORS - can be comma-separated string in .env or list
-    CORS_ORIGINS: str = "http://localhost:3000,https://train-seat-exchange.vercel.app/"
+    CORS_ORIGINS: str = "http://localhost:3001,https://train-seat-exchange.vercel.app/"
     
     # OCR (fallback option)
     # Hugging Face OCR Model (recommended for better accuracy)
@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     # AI-Enhanced Matching Algorithm
     USE_OPENAI_MATCHING: bool = True  # Enable AI-powered seat matching optimization
     AI_MATCHING_TOP_N: int = 5  # Number of matches to send to AI for re-ranking
+    # Admin API key for protected admin endpoints (set in .env)
+    ADMIN_API_KEY: Optional[str] = None
     
     # PNR Lookup API
     INDIAN_RAIL_API_KEY: Optional[str] = None  # API key for Indian Rail API

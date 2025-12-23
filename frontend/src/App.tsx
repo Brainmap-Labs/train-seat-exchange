@@ -9,6 +9,7 @@ import { FindExchangePage } from './features/exchange/FindExchangePage'
 import { ExchangeRequestsPage } from './features/exchange/ExchangeRequestsPage'
 import { ChatPage } from './features/chat/ChatPage'
 import { ProfilePage } from './features/profile/ProfilePage'
+import { AdminPage } from './features/admin/AdminPage'
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
         </Route>
         <Route path="chat/:exchangeId" element={<ChatPage />} />
         <Route path="profile" element={<ProfilePage />} />
+        <Route path="admin" element={<AdminPage />} />
       </Route>
     </Routes>
   )
