@@ -8,7 +8,7 @@ export function HomePage() {
   
   // Determine navigation targets based on auth status
   const primaryCtaLink = isAuthenticated ? '/tickets/upload' : '/tickets/upload'
-  const secondaryCtaLink = isAuthenticated ? '/dashboard' : '/login'
+  const secondaryCtaLink = isAuthenticated ? '/dashboard' : '/signup'
   return (
     <div className="min-h-screen">
       {/* Hero Section */}

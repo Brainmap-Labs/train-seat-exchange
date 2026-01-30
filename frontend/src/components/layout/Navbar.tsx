@@ -21,6 +21,13 @@ export function Navbar() {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-6">
+            <Link to="/about" className="hover:text-primary-400 transition-colors">About</Link>
+            {/* <Link to="/how-it-works" className="hover:text-primary-400 transition-colors">How It Works</Link> */}
+            <Link to="/faq" className="hover:text-primary-400 transition-colors">FAQ</Link>
+            <Link to="/contact" className="hover:text-primary-400 transition-colors">Contact</Link>
+            {/* <Link to="/privacy" className="hover:text-primary-400 transition-colors">Privacy</Link> */}
+            {/* <Link to="/terms" className="hover:text-primary-400 transition-colors">Terms</Link> */}
+            {/* <Link to="/refunds" className="hover:text-primary-400 transition-colors">Refunds</Link> */}
             {isAuthenticated ? (
               <>
                 <Link to="/dashboard" className="hover:text-primary-400 transition-colors">
@@ -45,11 +52,11 @@ export function Navbar() {
               </>
             ) : (
               <>
-                <Link to="/login" className="hover:text-primary-400 transition-colors">
+                {/* <Link to="/login" className="hover:text-primary-400 transition-colors">
                   Login
-                </Link>
+                </Link> */}
                 <Link to="/login" className="btn-secondary !py-2 !px-4 text-sm">
-                  Get Started
+                  Login
                 </Link>
               </>
             )}
@@ -69,6 +76,13 @@ export function Navbar() {
       {isMenuOpen && (
         <div className="md:hidden bg-blue-900 border-t border-white/10">
           <div className="px-4 py-4 space-y-2">
+                <Link to="/about" className="block py-2 hover:text-primary-400">About</Link>
+                {/* <Link to="/how-it-works" className="block py-2 hover:text-primary-400">How It Works</Link> */}
+                <Link to="/faq" className="block py-2 hover:text-primary-400">FAQ</Link>
+                <Link to="/contact" className="block py-2 hover:text-primary-400">Contact</Link>
+                {/* <Link to="/privacy" className="block py-2 hover:text-primary-400">Privacy</Link> */}
+                {/* <Link to="/terms" className="block py-2 hover:text-primary-400">Terms</Link> */}
+                {/* <Link to="/refunds" className="block py-2 hover:text-primary-400">Refunds</Link> */}
             {isAuthenticated ? (
               <>
                 <Link to="/dashboard" className="block py-2 hover:text-primary-400">My Trips</Link>
@@ -79,7 +93,7 @@ export function Navbar() {
             ) : (
               <>
                 <Link to="/login" className="block py-2 hover:text-primary-400">Login</Link>
-                <Link to="/login" className="block py-2 text-primary-400">Get Started</Link>
+                {/* <Link to="/login" className="block py-2 text-primary-400">Get Started</Link> */}
               </>
             )}
           </div>

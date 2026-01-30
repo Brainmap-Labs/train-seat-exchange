@@ -39,6 +39,8 @@ export default api
 
 // Auth API
 export const authApi = {
+  signup: (data: { name: string; mobile: string; password: string; email?: string }) => 
+    api.post('/auth/signup', data),
   sendOtp: (phone: string) => api.post('/auth/send-otp', { phone }),
   verifyOtp: (phone: string, otp: string) => api.post('/auth/verify-otp', { phone, otp }),
   getProfile: () => api.get('/auth/profile'),
