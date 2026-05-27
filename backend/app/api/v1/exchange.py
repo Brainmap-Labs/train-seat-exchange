@@ -39,7 +39,7 @@ async def find_exchange_matches(
     Args:
         ticket_id: The ticket ID to find matches for
         preferences: Optional user preferences for filtering
-        use_ai_enhancement: If True, uses OpenAI to enhance match ranking
+        use_ai_enhancement: If True, uses AI (OpenAI or Gemini) to enhance match ranking
     """
     ticket = await Ticket.get(PydanticObjectId(ticket_id))
     
@@ -344,7 +344,7 @@ async def batch_find_matches(
     
     Args:
         ticket_ids: List of ticket IDs to process
-        use_ai_enhancement: If True, uses OpenAI to enhance match ranking
+        use_ai_enhancement: If True, uses AI (OpenAI or Gemini) to enhance match ranking
     """
     # Validate tickets belong to current user and retrieve them
     tickets = []

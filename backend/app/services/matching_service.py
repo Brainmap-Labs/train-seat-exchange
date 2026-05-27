@@ -2,13 +2,13 @@ from typing import List, Dict, Any, Optional
 import itertools
 from datetime import datetime
 from beanie import PydanticObjectId
-import openai
 import json
 import asyncio
 from app.core.config import settings
 
 from app.models.ticket import Ticket, Passenger
 from app.models.user import User
+from app.services.ai_service import AIService, AIServiceError
 try:
     from ortools.sat.python import cp_model
 except Exception:
@@ -27,10 +27,9 @@ class MatchingService:
     }
     
     def __init__(self):
-        """Initialize OpenAI client if enabled"""
-        self.use_openai_matching = getattr(settings, 'USE_OPENAI_MATCHING', False)
-        if self.use_openai_matching and getattr(settings, 'OPENAI_API_KEY', None):
-            openai.api_key = settings.OPENAI_API_KEY
+        """Initialize AI matching if enabled (OpenAI and/or Gemini)."""
+        self.use_ai_matching = settings.ai_matching_enabled
+        self.ai_service = AIService() if self.use_ai_matching else None
     
     async def find_matches(
         self,
@@ -44,7 +43,7 @@ class MatchingService:
         Args:
             ticket: The ticket to find matches for
             preferences: User preferences for filtering
-            use_ai_enhancement: If True, uses OpenAI for enhanced matching
+            use_ai_enhancement: If True, uses AI (OpenAI or Gemini) for enhanced matching
             
         Returns:
             List of potential matches with scores
@@ -107,9 +106,9 @@ class MatchingService:
                         "ai_enhanced": False,
                     })
         
-        # If AI enhancement is enabled and we have OpenAI configured, enhance scores
-        if use_ai_enhancement and self.use_openai_matching and matches:
-            matches = await self._enhance_matches_with_openai(ticket, matches)
+        # If AI enhancement is enabled, re-rank top matches with OpenAI or Gemini
+        if use_ai_enhancement and self.use_ai_matching and self.ai_service and matches:
+            matches = await self._enhance_matches_with_ai(ticket, matches)
         
         # Sort by match score descending
         matches.sort(key=lambda x: x["match_score"], reverse=True)
@@ -126,7 +125,7 @@ class MatchingService:
         
         Args:
             tickets: List of tickets to find matches for
-            use_ai_enhancement: If True, uses OpenAI for enhanced matching
+            use_ai_enhancement: If True, uses AI (OpenAI or Gemini) for enhanced matching
             
         Returns:
             Dictionary mapping ticket_id to list of matches
@@ -147,25 +146,21 @@ class MatchingService:
         
         return results
     
-    async def _enhance_matches_with_openai(
+    async def _enhance_matches_with_ai(
         self,
         ticket: Ticket,
         matches: List[Dict[str, Any]],
-        top_n: int = 5
+        top_n: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """
-        Use OpenAI to intelligently re-rank matches based on complex criteria
-        
-        Args:
-            ticket: The user's ticket
-            matches: Initial matches from traditional scoring
-            top_n: Number of top matches to send to OpenAI for re-ranking
-            
-        Returns:
-            Enhanced matches with adjusted scores and AI insights
+        Re-rank matches using OpenAI or Gemini (with automatic fallback).
         """
+        if not self.ai_service:
+            return matches
+
+        top_n = top_n or settings.AI_MATCHING_TOP_N
+
         try:
-            # Prepare a concise summary for OpenAI
             my_passengers_info = [
                 {
                     "name": p.name,
@@ -176,8 +171,7 @@ class MatchingService:
                 }
                 for p in ticket.passengers
             ]
-            
-            # Take top N matches for AI analysis
+
             top_matches = matches[:top_n]
             matches_data = [
                 {
@@ -185,14 +179,17 @@ class MatchingService:
                     "other_user": m["user_name"],
                     "other_user_rating": m["user_rating"],
                     "current_score": m["match_score"],
-                    "available_seats": m["available_seats"][:3],  # Limit data size
+                    "available_seats": m["available_seats"][:3],
                     "benefits": m["benefit_description"]
                 }
                 for i, m in enumerate(top_matches)
             ]
-            
-            # Prompt for OpenAI
-            prompt = f"""Analyze these train seat exchange matches and re-rank them based on overall compatibility and exchange quality.
+
+            system_prompt = (
+                "You are an expert at analyzing train seat exchange scenarios. "
+                "Respond only with valid JSON."
+            )
+            user_prompt = f"""Analyze these train seat exchange matches and re-rank them based on overall compatibility and exchange quality.
 
 My ticket passengers:
 {json.dumps(my_passengers_info, indent=2)}
@@ -218,27 +215,13 @@ Respond with ONLY a valid JSON object (no markdown, no extra text):
     ],
     "overall_recommendation": "<brief insight about best options>"
 }}"""
-            
-            response = await asyncio.to_thread(
-                openai.ChatCompletion.create,
-                model=settings.OPENAI_MODEL,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are an expert at analyzing train seat exchange scenarios. Respond only with valid JSON."
-                    },
-                    {"role": "user", "content": prompt}
-                ],
+
+            ai_result, provider = await self.ai_service.chat_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
                 temperature=0.3,
-                max_tokens=1000
             )
-            
-            response_text = response.choices[0].message.content.strip()
-            
-            # Parse AI response
-            ai_result = json.loads(response_text)
-            
-            # Create a mapping of original match rank to AI scores
+
             ai_scores = {}
             for reranked in ai_result.get("reranked_matches", []):
                 ai_scores[reranked["match_rank"]] = {
@@ -246,14 +229,12 @@ Respond with ONLY a valid JSON object (no markdown, no extra text):
                     "reasoning": reranked["reasoning"],
                     "confidence": reranked["confidence"]
                 }
-            
-            # Update matches with AI scores (blend traditional and AI scores)
+
             enhanced_matches = []
             for i, match in enumerate(top_matches):
                 rank = i + 1
                 if rank in ai_scores:
                     ai_data = ai_scores[rank]
-                    # Blend scores: 60% traditional, 40% AI
                     blended_score = (
                         match["match_score"] * 0.6 +
                         ai_data["ai_score"] * 0.4
@@ -262,21 +243,18 @@ Respond with ONLY a valid JSON object (no markdown, no extra text):
                     match["ai_reasoning"] = ai_data["reasoning"]
                     match["ai_confidence"] = ai_data["confidence"]
                     match["ai_enhanced"] = True
-                
+                    match["ai_provider"] = provider
+
                 enhanced_matches.append(match)
-            
-            # Add remaining matches (not analyzed by AI)
+
             enhanced_matches.extend(matches[top_n:])
-            
             return enhanced_matches
-            
-        except json.JSONDecodeError as e:
-            print(f"Failed to parse OpenAI response: {e}")
-            # Return original matches if parsing fails
+
+        except (json.JSONDecodeError, AIServiceError) as e:
+            print(f"Failed to enhance matches with AI: {e}")
             return matches
         except Exception as e:
-            print(f"Error enhancing matches with OpenAI: {e}")
-            # Return original matches if any error occurs
+            print(f"Error enhancing matches with AI: {e}")
             return matches
     
     def _prepare_batch_analysis_prompt(
