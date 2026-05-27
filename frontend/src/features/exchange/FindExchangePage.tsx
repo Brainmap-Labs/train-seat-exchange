@@ -101,7 +101,7 @@ export function FindExchangePage() {
 
   if (isLoadingTicket) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="page-container">
         <Card>
           <CardContent className="py-12 text-center">
             <p className="text-slate-600">Loading ticket...</p>
@@ -113,7 +113,7 @@ export function FindExchangePage() {
 
   if (!currentTicket) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="page-container">
         <Card className="border-red-200 bg-red-50">
           <CardContent className="py-12 text-center">
             <p className="text-red-700 mb-4">Ticket not found</p>
@@ -127,24 +127,24 @@ export function FindExchangePage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <Link to="/dashboard" className="inline-flex items-center text-slate-600 hover:text-railway-blue mb-6">
+    <div className="page-container">
+      <Link to="/dashboard" className="inline-flex items-center text-slate-600 hover:text-railway-blue mb-4 sm:mb-6 text-sm sm:text-base">
         <ArrowLeft className="w-4 h-4 mr-2" />
         Back to Dashboard
       </Link>
 
       {/* Ticket Header */}
       <Card className="mb-6 overflow-hidden">
-        <div className="bg-gradient-to-r from-railway-blue to-blue-800 text-white p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Train className="w-6 h-6 text-primary-400" />
-                <span className="font-display text-2xl font-bold">
+        <div className="bg-gradient-to-r from-railway-blue to-blue-800 text-white p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-start gap-2 mb-2">
+                <Train className="w-5 h-5 sm:w-6 sm:h-6 text-primary-400 shrink-0 mt-0.5" />
+                <span className="font-display text-lg sm:text-2xl font-bold break-words">
                   {currentTicket.trainNumber} {currentTicket.trainName}
                 </span>
               </div>
-              <div className="flex items-center gap-4 text-blue-200">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-4 text-blue-200 text-sm">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" />
                   {currentTicket.travelDate.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
@@ -159,16 +159,16 @@ export function FindExchangePage() {
                 </span>
               </div>
             </div>
-            <div className="text-right">
+            <div className="sm:text-right shrink-0">
               <p className="text-sm text-blue-200">PNR</p>
-              <p className="font-mono text-xl font-bold">{currentTicket.pnr}</p>
+              <p className="font-mono text-lg sm:text-xl font-bold break-all">{currentTicket.pnr}</p>
             </div>
           </div>
         </div>
       </Card>
 
-      <h1 className="font-display text-3xl font-bold text-slate-900 mb-2">Find Seat Exchange</h1>
-      <p className="text-slate-600 mb-8">Find passengers willing to exchange seats to help your family sit together</p>
+      <h1 className="page-title mb-2">Find Seat Exchange</h1>
+      <p className="text-slate-600 mb-6 sm:mb-8 text-sm sm:text-base">Find passengers willing to exchange seats to help your family sit together</p>
 
       {error && (
         <Card className="mb-6 border-red-200 bg-red-50">
@@ -192,12 +192,12 @@ export function FindExchangePage() {
         </Card>
       ) : (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <p className="text-lg font-semibold text-slate-900">{matches.length} potential {matches.length === 1 ? 'match' : 'matches'} found</p>
+              <p className="text-base sm:text-lg font-semibold text-slate-900">{matches.length} potential {matches.length === 1 ? 'match' : 'matches'} found</p>
               <p className="text-sm text-slate-600">Sorted by best match score</p>
             </div>
-            <Button variant="outline" size="sm" onClick={handleSearch} isLoading={isSearching}>
+            <Button variant="outline" size="sm" onClick={handleSearch} isLoading={isSearching} className="w-full sm:w-auto">
               <Search className="w-4 h-4 mr-2" />
               Refresh
             </Button>
@@ -213,7 +213,7 @@ export function FindExchangePage() {
               <CardContent>
                 <div className="space-y-4">
                   {currentTicket.passengers.map((p) => (
-                    <div key={p.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3">
+                    <div key={p.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-slate-50 rounded-lg px-4 py-3">
                       <div>
                         <p className="font-medium">{p.name}</p>
                         <p className="text-sm text-slate-500">{p.age}yrs • {p.gender === 'M' ? 'Male' : 'Female'}</p>
@@ -268,9 +268,9 @@ export function FindExchangePage() {
                   }`}
                   onClick={() => setSelectedMatch(match)}
                 >
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+                      <div className="flex items-center gap-3 min-w-0">
                         <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
                           <span className="font-bold text-primary-700 text-lg">{match.userName[0]}</span>
                         </div>
@@ -416,9 +416,9 @@ export function FindExchangePage() {
                   </div>
                 </div>
                 
-                <div className="mt-6 flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3 mt-6">
                   <Button 
-                    className="flex-1"
+                    className="flex-1 w-full"
                     onClick={() => {
                       // TODO: Navigate to send exchange request
                       console.log('Send exchange request to:', selectedMatch.userId)

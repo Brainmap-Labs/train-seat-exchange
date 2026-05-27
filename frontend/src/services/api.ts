@@ -1,4 +1,5 @@
 import axios from 'axios'
+import type { AuthApiUser } from '@/utils/authSession'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 const api = axios.create({
@@ -41,10 +42,12 @@ export default api
 export const authApi = {
   signup: (data: { name: string; mobile: string; password: string; email?: string }) => 
     api.post('/auth/signup', data),
+  googleLogin: (idToken: string) => api.post('/auth/google', { id_token: idToken }),
   sendOtp: (phone: string) => api.post('/auth/send-otp', { phone }),
   verifyOtp: (phone: string, otp: string) => api.post('/auth/verify-otp', { phone, otp }),
   getProfile: () => api.get('/auth/profile'),
-  updateProfile: (data: { name?: string; email?: string }) => api.put('/auth/profile', data),
+  updateProfile: (data: { name?: string; phone?: string; email?: string }) =>
+    api.put<{ message: string; user: AuthApiUser }>('/auth/profile', data),
 }
 
 // Ticket API

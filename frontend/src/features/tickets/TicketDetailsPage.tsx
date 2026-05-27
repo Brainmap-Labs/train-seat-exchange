@@ -91,24 +91,24 @@ export function TicketDetailsPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
-      <Link to="/dashboard" className="inline-flex items-center text-slate-600 hover:text-railway-blue mb-6">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <Link to="/dashboard" className="inline-flex items-center text-slate-600 hover:text-railway-blue mb-4 sm:mb-6 text-sm sm:text-base">
         <ArrowLeft className="w-4 h-4 mr-2" />
         Back to Dashboard
       </Link>
 
       {/* Header Card */}
       <Card className="mb-6 overflow-hidden">
-        <div className="bg-gradient-to-r from-railway-blue to-blue-800 text-white p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Train className="w-6 h-6 text-primary-400" />
-                <span className="font-display text-2xl font-bold">
+        <div className="bg-gradient-to-r from-railway-blue to-blue-800 text-white p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-start gap-2 mb-2">
+                <Train className="w-5 h-5 sm:w-6 sm:h-6 text-primary-400 shrink-0 mt-0.5" />
+                <span className="font-display text-lg sm:text-2xl font-bold break-words">
                   {ticket.trainNumber} {ticket.trainName}
                 </span>
               </div>
-              <div className="flex items-center gap-4 text-blue-200">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-4 text-blue-200 text-sm">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" />
                   {ticket.travelDate.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
@@ -119,9 +119,9 @@ export function TicketDetailsPage() {
                 </span>
               </div>
             </div>
-            <div className="text-right">
+            <div className="sm:text-right shrink-0">
               <p className="text-sm text-blue-200">PNR</p>
-              <p className="font-mono text-xl font-bold">{ticket.pnr}</p>
+              <p className="font-mono text-lg sm:text-xl font-bold break-all">{ticket.pnr}</p>
             </div>
           </div>
         </div>
@@ -135,7 +135,7 @@ export function TicketDetailsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {ticket.passengers.map((p) => (
-              <div key={p.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3">
+              <div key={p.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-slate-50 rounded-lg px-4 py-3">
                 <div>
                   <p className="font-medium">{p.name}</p>
                   <p className="text-sm text-slate-500">{p.age}yrs • {p.gender === 'M' ? 'Male' : 'Female'}</p>

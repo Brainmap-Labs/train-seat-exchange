@@ -208,16 +208,16 @@ export function UploadTicketPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
-      <h1 className="font-display text-3xl font-bold text-slate-900 mb-2">
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <h1 className="page-title mb-2">
         Add Train Ticket
       </h1>
-      <p className="text-slate-600 mb-8">
+      <p className="text-slate-600 mb-6 sm:mb-8 text-sm sm:text-base">
         Enter your PNR number or upload ticket image to get started
       </p>
 
       {/* Step Indicator */}
-      <div className="flex items-center gap-2 mb-8">
+      <div className="flex flex-wrap items-center gap-1 sm:gap-2 mb-6 sm:mb-8">
         {['Input', 'Processing', 'Verify', 'Done'].map((label, index) => {
           const stepIndex = ['input', 'processing', 'verify', 'complete'].indexOf(step)
           const isActive = index === stepIndex
@@ -226,17 +226,17 @@ export function UploadTicketPage() {
           return (
             <div key={label} className="flex items-center">
               <div className={`
-                w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
+                w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold shrink-0
                 ${isComplete ? 'bg-green-500 text-white' : 
                   isActive ? 'bg-railway-blue text-white' : 
                   'bg-slate-200 text-slate-500'}
               `}>
-                {isComplete ? <CheckCircle className="w-5 h-5" /> : index + 1}
+                {isComplete ? <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" /> : index + 1}
               </div>
-              <span className={`ml-2 text-sm ${isActive ? 'text-slate-900 font-medium' : 'text-slate-500'}`}>
+              <span className={`ml-1.5 sm:ml-2 text-xs sm:text-sm hidden sm:inline ${isActive ? 'text-slate-900 font-medium' : 'text-slate-500'}`}>
                 {label}
               </span>
-              {index < 3 && <div className="w-8 h-0.5 bg-slate-200 mx-2" />}
+              {index < 3 && <div className="w-4 sm:w-8 h-0.5 bg-slate-200 mx-1 sm:mx-2" />}
             </div>
           )
         })}
@@ -247,7 +247,7 @@ export function UploadTicketPage() {
         <div className="space-y-6">
           {/* Only show image upload method */}
           <Card>
-            <CardContent className="p-8">
+            <CardContent className="p-4 sm:p-8">
               {error && (
                 <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4 flex gap-3">
                   <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
@@ -257,7 +257,7 @@ export function UploadTicketPage() {
               <div
                 {...getRootProps()}
                 className={`
-                  border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-colors
+                  border-2 border-dashed rounded-2xl p-6 sm:p-12 text-center cursor-pointer transition-colors
                   ${isDragActive ? 'border-primary-500 bg-primary-50' : 'border-slate-300 hover:border-primary-400'}
                 `}
               >
@@ -329,7 +329,7 @@ export function UploadTicketPage() {
             <CardContent>
               <div className="space-y-3">
                 {extractedData.passengers.map((p, index) => (
-                  <div key={index} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3">
+                  <div key={index} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-slate-50 rounded-lg px-4 py-3">
                     <div>
                       <p className="font-medium">{p.name}</p>
                       <p className="text-sm text-slate-500">{p.age}yrs • {p.gender === 'M' ? 'Male' : 'Female'}</p>
@@ -357,7 +357,7 @@ export function UploadTicketPage() {
             </CardContent>
           </Card>
 
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             <Button variant="outline" onClick={() => {
               setStep('input')
               setExtractedData(null)

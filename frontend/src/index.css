@@ -8,8 +8,12 @@
     --color-railway-blue: 26 35 126;
   }
 
+  html {
+    @apply overflow-x-hidden;
+  }
+
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply bg-slate-50 text-slate-900 antialiased overflow-x-hidden;
     font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
   }
 
@@ -19,6 +23,17 @@
 }
 
 @layer components {
+  .page-container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8;
+  }
+
+  .page-container-narrow {
+    @apply max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-8;
+  }
+
+  .page-title {
+    @apply font-display text-2xl sm:text-3xl font-bold text-slate-900;
+  }
   .btn-primary {
     @apply bg-railway-blue text-white px-6 py-3 rounded-xl font-semibold 
            hover:bg-blue-900 transition-all duration-200 

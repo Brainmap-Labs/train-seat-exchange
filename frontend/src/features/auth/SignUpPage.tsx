@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/Button'
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton'
 import { authApi } from '@/services/api'
+import { isGoogleAuthConfigured, useGoogleAuth } from '@/hooks/useGoogleAuth'
 
 export function SignUpPage() {
   const [name, setName] = useState('')
@@ -12,6 +14,15 @@ export function SignUpPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const {
+    handleGoogleSuccess,
+    handleGoogleError,
+    isLoading: isGoogleLoading,
+    error: googleError,
+    setError: setGoogleError,
+  } = useGoogleAuth()
+
+  const displayError = error || googleError
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,9 +66,34 @@ export function SignUpPage() {
           <h1 className="font-display text-3xl font-bold text-slate-900 mb-2">Create Account</h1>
           <p className="text-slate-600 mb-8">Join SeatSwap and start exchanging seats</p>
 
-          {error && (
+          {displayError && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-              {error}
+              {displayError}
+            </div>
+          )}
+
+          {isGoogleAuthConfigured && (
+            <div className="mb-6 space-y-4">
+              <GoogleSignInButton
+                onSuccess={(response) => {
+                  setError('')
+                  setGoogleError(null)
+                  handleGoogleSuccess(response)
+                }}
+                onError={() => {
+                  setError('')
+                  handleGoogleError()
+                }}
+                text="signup_with"
+              />
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-200" />
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="bg-white px-3 text-slate-500">or sign up with email</span>
+                </div>
+              </div>
             </div>
           )}
 
@@ -117,7 +153,7 @@ export function SignUpPage() {
               />
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full" disabled={loading || isGoogleLoading}>
               {loading ? 'Creating Account...' : 'Create Account'}
             </Button>
           </form>

@@ -19,11 +19,11 @@ export function ExchangeRequestsPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="font-display text-3xl font-bold text-slate-900 mb-8">Exchange Requests</h1>
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <h1 className="page-title mb-6 sm:mb-8">Exchange Requests</h1>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         {(['received', 'sent'] as const).map((tab) => (
           <button
             key={tab}
@@ -60,17 +60,17 @@ export function ExchangeRequestsPage() {
         <div className="space-y-4">
           {requests[activeTab].map((req) => (
             <Card key={req.id}>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold text-lg">
+              <CardContent className="p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-base sm:text-lg">
                       {activeTab === 'received' && 'from' in req ? `From: ${req.from}` : ''}
                       {activeTab === 'sent' && 'to' in req ? `To: ${req.to}` : ''}
                     </p>
-                    <p className="text-slate-600">{req.train}</p>
+                    <p className="text-slate-600 text-sm sm:text-base">{req.train}</p>
                     <p className="text-sm text-slate-500">Seat: {req.seat}</p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {activeTab === 'received' && req.status === 'pending' && (
                       <>
                         <Button variant="outline" size="sm">

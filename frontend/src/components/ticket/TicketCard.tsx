@@ -17,12 +17,12 @@ export function TicketCard({ ticket, showActions = true, onDelete }: TicketCardP
   return (
     <Card className="overflow-hidden hover:shadow-xl transition-shadow">
       {/* Header */}
-      <div className="bg-gradient-to-r from-railway-blue to-blue-800 text-white px-6 py-4">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <Train className="w-5 h-5 text-primary-400" />
-              <span className="font-display font-bold text-lg">
+      <div className="bg-gradient-to-r from-railway-blue to-blue-800 text-white px-4 sm:px-6 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start gap-2">
+              <Train className="w-5 h-5 text-primary-400 shrink-0 mt-0.5" />
+              <span className="font-display font-bold text-base sm:text-lg break-words">
                 {ticket.trainNumber} {ticket.trainName}
               </span>
             </div>
@@ -49,24 +49,24 @@ export function TicketCard({ ticket, showActions = true, onDelete }: TicketCardP
       </div>
 
       {/* Route */}
-      <div className="px-6 py-4 border-b border-slate-100">
-        <div className="flex items-center gap-4">
-          <div className="flex-1">
+      <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+          <div className="flex-1 min-w-0">
             <p className="text-sm text-slate-500">From</p>
             <p className="font-semibold">{ticket.boardingStation.code}</p>
-            <p className="text-sm text-slate-600">{ticket.boardingStation.name}</p>
+            <p className="text-sm text-slate-600 truncate">{ticket.boardingStation.name}</p>
           </div>
-          <ArrowRight className="w-5 h-5 text-slate-400" />
-          <div className="flex-1 text-right">
+          <ArrowRight className="w-5 h-5 text-slate-400 hidden sm:block shrink-0" />
+          <div className="flex-1 sm:text-right min-w-0">
             <p className="text-sm text-slate-500">To</p>
             <p className="font-semibold">{ticket.destinationStation.code}</p>
-            <p className="text-sm text-slate-600">{ticket.destinationStation.name}</p>
+            <p className="text-sm text-slate-600 truncate">{ticket.destinationStation.name}</p>
           </div>
         </div>
       </div>
 
       {/* Passengers */}
-      <div className="px-6 py-4">
+      <div className="px-4 sm:px-6 py-4">
         <div className="flex items-center gap-2 mb-3">
           <Users className="w-4 h-4 text-slate-400" />
           <span className="text-sm font-medium text-slate-700">
@@ -83,7 +83,7 @@ export function TicketCard({ ticket, showActions = true, onDelete }: TicketCardP
           {ticket.passengers.map((passenger) => (
             <div
               key={passenger.id}
-              className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2"
+              className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 bg-slate-50 rounded-lg px-3 py-2"
             >
               <div>
                 <p className="font-medium text-sm">{passenger.name}</p>
@@ -112,16 +112,16 @@ export function TicketCard({ ticket, showActions = true, onDelete }: TicketCardP
 
       {/* Actions */}
       {showActions && (
-        <div className="px-6 py-4 bg-slate-50 flex gap-3">
+        <div className="px-4 sm:px-6 py-4 bg-slate-50 flex flex-col sm:flex-row gap-2 sm:gap-3">
           <Link
             to={`/tickets/${ticket.id}`}
-            className="flex-1 text-center py-2 text-sm font-medium text-slate-600 hover:text-railway-blue transition-colors"
+            className="flex-1 text-center py-2.5 text-sm font-medium text-slate-600 hover:text-railway-blue transition-colors rounded-lg border border-slate-200 sm:border-0"
           >
             View Details
           </Link>
           <Link
             to={`/exchange/find/${ticket.id}`}
-            className="flex-1 text-center py-2 bg-railway-blue text-white rounded-lg text-sm font-medium hover:bg-blue-900 transition-colors"
+            className="flex-1 text-center py-2.5 bg-railway-blue text-white rounded-lg text-sm font-medium hover:bg-blue-900 transition-colors"
           >
             Find Exchange
           </Link>
