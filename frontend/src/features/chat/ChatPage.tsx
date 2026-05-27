@@ -18,15 +18,15 @@ export function ChatPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto h-[calc(100vh-4rem)] flex flex-col">
+    <div className="max-w-2xl mx-auto w-full min-h-[calc(100dvh-4rem)] flex flex-col px-4 sm:px-0">
       {/* Header */}
-      <div className="bg-white border-b px-4 py-3 flex items-center gap-4">
+      <div className="bg-white border-b px-4 py-3 flex items-center gap-3 sm:gap-4 shrink-0">
         <Link to="/exchange/requests">
           <ArrowLeft className="w-5 h-5 text-slate-600" />
         </Link>
-        <div>
-          <h2 className="font-semibold">Amit Sharma</h2>
-          <p className="text-sm text-slate-500">Exchange Request #{exchangeId}</p>
+        <div className="min-w-0">
+          <h2 className="font-semibold truncate">Amit Sharma</h2>
+          <p className="text-sm text-slate-500 truncate">Exchange Request #{exchangeId}</p>
         </div>
       </div>
 
@@ -49,7 +49,7 @@ export function ChatPage() {
       </div>
 
       {/* Input */}
-      <div className="bg-white border-t p-4">
+      <div className="bg-white border-t p-3 sm:p-4 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div className="flex gap-2">
           <input
             type="text"

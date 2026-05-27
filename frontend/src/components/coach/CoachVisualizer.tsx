@@ -52,7 +52,7 @@ export function CoachVisualizer({
 
   return (
     <div className="bg-slate-100 rounded-2xl p-4 overflow-x-auto">
-      <div className="flex items-center gap-4 mb-4">
+      <div className="flex flex-wrap items-center gap-3 sm:gap-4 mb-4">
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded bg-berth-lower" />
           <span className="text-xs text-slate-600">Lower</span>

@@ -1,4 +1,5 @@
-import ssl
+from pathlib import Path
+
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
 
@@ -8,41 +9,38 @@ from app.models.ticket import Ticket
 from app.models.exchange import ExchangeRequest
 from app.models.message import Message
 
+_BACKEND_DIR = Path(__file__).resolve().parents[2]
+
 client: AsyncIOMotorClient = None
+
 
 async def init_db():
     global client
-    # Configure SSL/TLS for MongoDB Atlas connection
-    # For development: allow invalid certificates
-    # For production: use proper SSL certificates
-    
-    # Motor client options
+
+    mongodb_url = (settings.MONGODB_URL or "").strip()
+    if not mongodb_url:
+        raise RuntimeError(
+            "MONGODB_URL is empty. Set it in backend/.env "
+            f"(expected file: {_BACKEND_DIR / '.env'}). See backend/.env.example."
+        )
+
     client_options = {
         "serverSelectionTimeoutMS": 5000,
         "connectTimeoutMS": 10000,
     }
-    
-    # In development mode, allow invalid certificates using SSL context
-    if settings.DEBUG:
-        # Create SSL context that doesn't verify certificates
-        ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
+
+    # Atlas (mongodb+srv) uses TLS; local mongodb:// does not
+    if settings.DEBUG and mongodb_url.startswith("mongodb+srv://"):
         client_options["tls"] = True
         client_options["tlsAllowInvalidCertificates"] = True
-        # Alternative: use ssl_context directly
-        # client_options["ssl"] = ssl_context
-    
-    client = AsyncIOMotorClient(
-        settings.MONGODB_URL,
-        **client_options
-    )
-    
+
+    client = AsyncIOMotorClient(mongodb_url, **client_options)
+
     await init_beanie(
         database=client[settings.DATABASE_NAME],
-        document_models=[User, Ticket, ExchangeRequest, Message]
+        document_models=[User, Ticket, ExchangeRequest, Message],
     )
+
 
 async def get_database():
     return client[settings.DATABASE_NAME]
-

@@ -36,7 +36,17 @@ export function DashboardPage() {
         classType: t.class_type,
         quota: t.quota || 'GN',
         status: t.status || 'active',
-        passengers: t.passengers || [],
+        passengers: (t.passengers || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          age: p.age,
+          gender: p.gender,
+          coach: p.coach,
+          seatNumber: p.seatNumber !== undefined ? p.seatNumber : p.seat_number,
+          berthType: p.berthType || p.berth_type,
+          bookingStatus: p.bookingStatus || p.booking_status,
+          currentStatus: p.currentStatus || p.current_status,
+        })),
         createdAt: new Date(t.created_at || Date.now()),
         updatedAt: new Date(t.updated_at || Date.now()),
       }))
@@ -73,17 +83,17 @@ export function DashboardPage() {
   const pastTickets = tickets.filter(t => new Date(t.travelDate) < new Date())
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="page-container">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8">
         <div>
-          <h1 className="font-display text-3xl font-bold text-slate-900">
+          <h1 className="page-title">
             Welcome back, {user?.name?.split(' ')[0] || 'Traveler'}!
           </h1>
-          <p className="text-slate-600 mt-1">Manage your trips and seat exchanges</p>
+          <p className="text-slate-600 mt-1 text-sm sm:text-base">Manage your trips and seat exchanges</p>
         </div>
-        <Link to="/tickets/upload">
-          <Button>
+        <Link to="/tickets/upload" className="w-full sm:w-auto">
+          <Button className="w-full sm:w-auto">
             <Plus className="w-5 h-5 mr-2" />
             Add Ticket
           </Button>
@@ -91,7 +101,7 @@ export function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
         {[
           { label: 'Upcoming Trips', value: upcomingTickets.length, icon: Train },
           { label: 'Total Exchanges', value: user?.totalExchanges || 0, icon: ArrowRight },
@@ -99,14 +109,14 @@ export function DashboardPage() {
           { label: 'Pending Requests', value: 0, icon: Calendar },
         ].map((stat, index) => (
           <Card key={index}>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-primary-100 p-2 rounded-lg">
-                  <stat.icon className="w-5 h-5 text-primary-600" />
+            <CardContent className="p-3 sm:p-4">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="bg-primary-100 p-1.5 sm:p-2 rounded-lg shrink-0">
+                  <stat.icon className="w-4 h-4 sm:w-5 sm:h-5 text-primary-600" />
                 </div>
-                <div>
-                  <p className="text-2xl font-bold text-slate-900">{stat.value}</p>
-                  <p className="text-sm text-slate-500">{stat.label}</p>
+                <div className="min-w-0">
+                  <p className="text-lg sm:text-2xl font-bold text-slate-900">{stat.value}</p>
+                  <p className="text-xs sm:text-sm text-slate-500 truncate">{stat.label}</p>
                 </div>
               </div>
             </CardContent>

@@ -1,10 +1,11 @@
 // User Types
 export interface User {
   id: string;
-  phone: string;
+  phone?: string;
   email?: string;
   name: string;
   avatarUrl?: string;
+  authProvider?: 'phone' | 'google';
   rating: number;
   totalExchanges: number;
   createdAt: Date;

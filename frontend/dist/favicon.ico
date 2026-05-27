@@ -1,0 +1,2 @@
+<!-- This is a PNG embedded as base64. In production, you'd want to add actual PNG files.
+For now, we'll enhance the index.html to include both SVG and fallback favicons -->

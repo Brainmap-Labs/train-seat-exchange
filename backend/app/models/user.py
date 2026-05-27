@@ -1,10 +1,15 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from beanie import Document
 from pydantic import Field
+from pymongo import IndexModel, ASCENDING
+
+AuthProvider = Literal["phone", "google"]
 
 class User(Document):
-    phone: str = Field(..., unique=True)
+    phone: Optional[str] = None
+    google_id: Optional[str] = None
+    auth_provider: AuthProvider = "phone"
     name: str = ""
     email: Optional[str] = None
     avatar_url: Optional[str] = None
@@ -18,6 +23,17 @@ class User(Document):
 
     class Settings:
         name = "users"
+        indexes = [
+            IndexModel([("phone", ASCENDING)], unique=True, sparse=True),
+            IndexModel([("google_id", ASCENDING)], unique=True, sparse=True),
+            # Partial unique: many phone-OTP users have no email (null)
+            IndexModel(
+                [("email", ASCENDING)],
+                unique=True,
+                name="email_unique_nonempty",
+                partialFilterExpression={"email": {"$type": "string"}},
+            ),
+        ]
         
     class Config:
         json_schema_extra = {

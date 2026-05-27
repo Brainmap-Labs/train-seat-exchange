@@ -8,7 +8,7 @@ export function HomePage() {
   
   // Determine navigation targets based on auth status
   const primaryCtaLink = isAuthenticated ? '/tickets/upload' : '/tickets/upload'
-  const secondaryCtaLink = isAuthenticated ? '/dashboard' : '/login'
+  const secondaryCtaLink = isAuthenticated ? '/dashboard' : '/signup'
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -20,25 +20,25 @@ export function HomePage() {
           }} />
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32 relative">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 md:py-32 relative">
           <div className="max-w-3xl">
-            <h1 className="font-display text-4xl md:text-6xl font-bold leading-tight mb-6">
+            <h1 className="font-display text-3xl sm:text-4xl md:text-6xl font-bold leading-tight mb-4 sm:mb-6">
               Sit Together with Your{' '}
               <span className="text-primary-400">Family</span> on Trains
             </h1>
-            <p className="text-xl text-blue-100 mb-8 max-w-2xl">
+            <p className="text-base sm:text-xl text-blue-100 mb-6 sm:mb-8 max-w-2xl">
               Upload your train ticket, find passengers willing to exchange seats, 
               and ensure your family travels together comfortably.
             </p>
-            <div className="flex flex-wrap gap-4">
-              <Link to={primaryCtaLink}>
-                <Button variant="secondary" size="lg">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
+              <Link to={primaryCtaLink} className="w-full sm:w-auto">
+                <Button variant="secondary" size="lg" className="w-full sm:w-auto">
                   <Upload className="w-5 h-5 mr-2" />
                   Upload Ticket
                 </Button>
               </Link>
-              <Link to={secondaryCtaLink}>
-                <Button variant="outline" size="lg" className="border-white text-white hover:bg-white hover:text-railway-blue">
+              <Link to={secondaryCtaLink} className="w-full sm:w-auto">
+                <Button variant="outline" size="lg" className="w-full sm:w-auto border-white text-white hover:bg-white hover:text-railway-blue">
                   {isAuthenticated ? 'My Trips' : 'Get Started Free'}
                 </Button>
               </Link>

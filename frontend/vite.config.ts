@@ -12,8 +12,9 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
+      // Local dev: proxy /api to local FastAPI. Override with VITE_API_PROXY_TARGET if needed.
       '/api': {
-        target: 'https://train-seat-exchange.onrender.com',
+        target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true,
       },
     },
