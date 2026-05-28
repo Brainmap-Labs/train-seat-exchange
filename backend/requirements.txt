@@ -15,7 +15,7 @@ beanie==1.29.0
 
 # OCR & Image Processing
 Pillow==11.1.0
-# pdf2image==1.17.0
+pdf2image==1.17.0
 pytesseract==0.3.13
 # transformers==4.48.0  # Hugging Face OCR; check torch cp314 wheel availability
 # torch==2.6.0

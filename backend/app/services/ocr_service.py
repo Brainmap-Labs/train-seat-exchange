@@ -6,6 +6,11 @@ from PIL import Image
 
 from app.services.ai_service import AIService, AIServiceError
 
+
+class OCRExtractionError(Exception):
+    """Raised when ticket text cannot be extracted from an uploaded file."""
+
+
 class OCRService:
     """Service for extracting ticket data from images using OCR
     
@@ -305,45 +310,60 @@ class OCRService:
             raise
     
     async def _extract_from_pdf(self, pdf_bytes: bytes) -> str:
-        """Extract text from PDF (tries Hugging Face first, then Tesseract)"""
+        """Extract text from PDF pages via pdf2image + OCR."""
+        if not pdf_bytes:
+            raise OCRExtractionError("PDF file is empty.")
+
         try:
             from pdf2image import convert_from_bytes
-            
-            images = convert_from_bytes(pdf_bytes)
-            text = ""
-            
-            for image in images:
-                # Try Hugging Face first
-                if self.huggingface_available:
-                    try:
-                        page_text = await self._extract_with_huggingface(image)
-                        if page_text and len(page_text.strip()) > 10:
-                            text += page_text + "\n"
-                            continue
-                    except Exception as e:
-                        print(f"⚠️  Hugging Face OCR error on PDF page: {e}")
-                
-                # Fallback to Tesseract
-                if self.tesseract_available:
-                    try:
-                        import pytesseract
-                        text += pytesseract.image_to_string(image) + "\n"
-                    except Exception as e:
-                        print(f"⚠️  Tesseract error on PDF page: {e}")
-            
-            if text.strip():
-                return text
-            
-            print("⚠️  No OCR method available for PDF. Using mock data.")
-            return self._get_mock_ticket_text()
-            
-        except ImportError as e:
-            print(f"⚠️  Missing dependency: {e}. Using mock data.")
-            return self._get_mock_ticket_text()
-        except Exception as e:
-            error_msg = str(e)
-            print(f"❌ PDF OCR Error: {error_msg}")
-            return self._get_mock_ticket_text()
+        except ImportError as exc:
+            raise OCRExtractionError(
+                "PDF support is not installed on the server (missing pdf2image)."
+            ) from exc
+
+        if not self.tesseract_available and not self.huggingface_available:
+            raise OCRExtractionError(
+                "No OCR engine available to read PDF tickets. Tesseract must be installed."
+            )
+
+        try:
+            images = convert_from_bytes(pdf_bytes, dpi=200)
+        except Exception as exc:
+            error_msg = str(exc).lower()
+            if "poppler" in error_msg or "pdftoppm" in error_msg:
+                raise OCRExtractionError(
+                    "PDF conversion failed. Poppler must be installed (poppler-utils)."
+                ) from exc
+            raise OCRExtractionError(f"Could not read PDF: {exc}") from exc
+
+        if not images:
+            raise OCRExtractionError("PDF has no pages or could not be rendered.")
+
+        text = ""
+        for image in images:
+            if self.huggingface_available:
+                try:
+                    page_text = await self._extract_with_huggingface(image)
+                    if page_text and len(page_text.strip()) > 10:
+                        text += page_text + "\n"
+                        continue
+                except Exception as e:
+                    print(f"⚠️  Hugging Face OCR error on PDF page: {e}")
+
+            if self.tesseract_available:
+                try:
+                    import pytesseract
+                    text += pytesseract.image_to_string(image) + "\n"
+                except Exception as e:
+                    print(f"⚠️  Tesseract error on PDF page: {e}")
+
+        if not text.strip():
+            raise OCRExtractionError(
+                "Could not extract readable text from the PDF. "
+                "Try a clearer file, or use PNR lookup instead."
+            )
+
+        return text
     
     def _parse_ticket_text(self, text: str) -> Dict[str, Any]:
         """Parse ticket text and extract structured data from multiple OCR formats
@@ -496,7 +516,7 @@ Return a JSON object with the following structure:
             "age": integer_age,
             "gender": "M, F, or O",
             "coach": "Coach code (e.g., B2, A1)",
-            "seat_number": integer_seat_number,
+            "seat_number": integer or alphanumeric seat number,
             "berth_type": "LB, MB, UB, SL, or SU",
             "booking_status": "CNF, RAC, WL, RLWL, or PQWL",
             "current_status": "CNF, RAC, WL, RLWL, or PQWL"
