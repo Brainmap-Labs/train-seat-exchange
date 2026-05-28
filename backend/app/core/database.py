@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
 
@@ -8,8 +6,6 @@ from app.models.user import User
 from app.models.ticket import Ticket
 from app.models.exchange import ExchangeRequest
 from app.models.message import Message
-
-_BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 client: AsyncIOMotorClient = None
 
@@ -20,8 +16,24 @@ async def init_db():
     mongodb_url = (settings.MONGODB_URL or "").strip()
     if not mongodb_url:
         raise RuntimeError(
-            "MONGODB_URL is empty. Set it in backend/.env "
-            f"(expected file: {_BACKEND_DIR / '.env'}). See backend/.env.example."
+            "MONGODB_URL is not set. "
+            "For Docker/Render, pass it as an environment variable "
+            "(e.g. docker run --env-file .env ... or set it in the Render dashboard). "
+            "For local dev without Docker, use backend/.env. "
+            "See backend/.env.example."
+        )
+
+    if not (
+        mongodb_url.startswith("mongodb://")
+        or mongodb_url.startswith("mongodb+srv://")
+    ):
+        preview = mongodb_url[:40] + ("..." if len(mongodb_url) > 40 else "")
+        raise RuntimeError(
+            "MONGODB_URL must start with mongodb:// or mongodb+srv://. "
+            f"Got: {preview!r}. "
+            "If your Atlas password contains #, $, or &, wrap the full URL in double quotes "
+            'in backend/.env, e.g. MONGODB_URL="mongodb+srv://user:pass@host/?retryWrites=true&w=majority". '
+            "URL-encode special characters in the password if needed."
         )
 
     client_options = {

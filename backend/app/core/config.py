@@ -63,10 +63,14 @@ class Settings(BaseSettings):
 
     @field_validator("MONGODB_URL", mode="before")
     @classmethod
-    def strip_mongodb_url(cls, value: object) -> object:
-        if isinstance(value, str):
-            return value.strip()
-        return value
+    def normalize_mongodb_url(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        url = value.strip()
+        # Docker --env-file and some .env editors leave surrounding quotes in the value
+        if len(url) >= 2 and url[0] == url[-1] and url[0] in ("'", '"'):
+            url = url[1:-1].strip()
+        return url
 
     @property
     def ai_parsing_enabled(self) -> bool:
