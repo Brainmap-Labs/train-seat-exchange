@@ -68,20 +68,48 @@ export const ticketApi = {
 
 // Exchange API
 export const exchangeApi = {
-  findMatches: (ticketId: string, preferences?: any) => 
+  findMatches: (ticketId: string, preferences?: any) =>
     api.post(`/exchange/find-matches/${ticketId}`, preferences),
-  sendRequest: (data: { targetUserId: string; targetTicketId: string; proposal: any }) =>
-    api.post('/exchange/request', data),
+  sendRequest: (data: {
+    requesterTicketId: string
+    targetUserId: string
+    targetTicketId: string
+    giveSeats: Array<{
+      passenger_id: string
+      passenger_name: string
+      coach: string
+      seat_number: number
+      berth_type: string
+    }>
+    receiveSeats: Array<{
+      passenger_id: string
+      passenger_name: string
+      coach: string
+      seat_number: number
+      berth_type: string
+    }>
+    message?: string
+  }) =>
+    api.post('/exchange/request', {
+      requester_ticket_id: data.requesterTicketId,
+      target_user_id: data.targetUserId,
+      target_ticket_id: data.targetTicketId,
+      give_seats: data.giveSeats,
+      receive_seats: data.receiveSeats,
+      message: data.message,
+    }),
   getRequests: () => api.get('/exchange/requests'),
+  getRequest: (id: string) => api.get(`/exchange/requests/${id}`),
   respondToRequest: (id: string, action: 'accept' | 'decline') =>
     api.post(`/exchange/requests/${id}/${action}`),
+  cancelRequest: (id: string) => api.post(`/exchange/requests/${id}/cancel`),
   markCompleted: (id: string) => api.post(`/exchange/requests/${id}/complete`),
 }
 
 // Chat API
 export const chatApi = {
   getMessages: (exchangeId: string) => api.get(`/chat/${exchangeId}`),
-  sendMessage: (exchangeId: string, content: string) => 
+  sendMessage: (exchangeId: string, content: string) =>
     api.post(`/chat/${exchangeId}`, { content }),
 }
 

@@ -1,60 +1,58 @@
 from fastapi import APIRouter, HTTPException, status, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List
-from datetime import datetime
 from beanie import PydanticObjectId
 
 from app.core.security import get_current_user
 from app.models.user import User
-from app.models.exchange import ExchangeRequest
 from app.models.message import Message
+from app.services.exchange_service import (
+    get_exchange_for_user,
+    ACTIVE_CHAT_STATUSES,
+)
 
 router = APIRouter()
 
+MAX_MESSAGE_LENGTH = 2000
+
+
 class SendMessageRequest(BaseModel):
-    content: str
+    content: str = Field(..., min_length=1, max_length=MAX_MESSAGE_LENGTH)
+
 
 @router.get("/{exchange_id}")
 async def get_messages(
     exchange_id: str,
     current_user: User = Depends(get_current_user)
 ):
-    """Get all messages for an exchange"""
-    exchange = await ExchangeRequest.get(PydanticObjectId(exchange_id))
-    
-    if not exchange:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Exchange not found"
-        )
-    
-    # Verify user is part of exchange
-    if exchange.requester_id != current_user.id and exchange.target_user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view these messages"
-        )
-    
+    """Get all messages for an exchange (marks others' messages as read)."""
+    exchange = await get_exchange_for_user(exchange_id, current_user.id)
+
     messages = await Message.find(
         Message.exchange_id == PydanticObjectId(exchange_id)
     ).sort("+created_at").to_list()
-    
-    # Mark messages as read
+
     for msg in messages:
         if msg.sender_id != current_user.id and not msg.is_read:
             msg.is_read = True
             await msg.save()
-    
-    return [
-        {
-            "id": str(m.id),
-            "sender_id": str(m.sender_id),
-            "content": m.content,
-            "is_read": m.is_read,
-            "created_at": m.created_at,
-        }
-        for m in messages
-    ]
+
+    return {
+        "exchange_id": exchange_id,
+        "exchange_status": exchange.status,
+        "can_send": exchange.status in ACTIVE_CHAT_STATUSES,
+        "messages": [
+            {
+                "id": str(m.id),
+                "sender_id": str(m.sender_id),
+                "content": m.content,
+                "is_read": m.is_read,
+                "created_at": m.created_at,
+            }
+            for m in messages
+        ],
+    }
+
 
 @router.post("/{exchange_id}")
 async def send_message(
@@ -62,36 +60,33 @@ async def send_message(
     request: SendMessageRequest,
     current_user: User = Depends(get_current_user)
 ):
-    """Send a message in an exchange chat"""
-    exchange = await ExchangeRequest.get(PydanticObjectId(exchange_id))
-    
-    if not exchange:
+    """Send a message in an exchange chat."""
+    exchange = await get_exchange_for_user(exchange_id, current_user.id)
+
+    if exchange.status not in ACTIVE_CHAT_STATUSES:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Exchange not found"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot send messages for exchange with status: {exchange.status}",
         )
-    
-    # Verify user is part of exchange
-    if exchange.requester_id != current_user.id and exchange.target_user_id != current_user.id:
+
+    content = request.content.strip()
+    if not content:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to send messages here"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Message cannot be empty",
         )
-    
-    # Create message
+
     message = Message(
         exchange_id=PydanticObjectId(exchange_id),
         sender_id=current_user.id,
-        content=request.content,
+        content=content,
     )
     await message.insert()
-    
-    # TODO: Send real-time notification via WebSocket
-    
+
     return {
         "id": str(message.id),
         "sender_id": str(message.sender_id),
         "content": message.content,
+        "is_read": message.is_read,
         "created_at": message.created_at,
     }
-

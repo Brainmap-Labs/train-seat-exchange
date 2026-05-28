@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Search, Star, Users, MapPin, Calendar, Train, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader } from '@/components/ui/Card'
@@ -9,7 +9,10 @@ import { CoachVisualizer } from '@/components/coach/CoachVisualizer'
 
 export function FindExchangePage() {
   const { ticketId } = useParams()
+  const navigate = useNavigate()
   const [isSearching, setIsSearching] = useState(false)
+  const [isSending, setIsSending] = useState(false)
+  const [requestMessage, setRequestMessage] = useState('')
   const [matches, setMatches] = useState<ExchangeMatch[]>([])
   const [error, setError] = useState<string | null>(null)
   const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null)
@@ -96,6 +99,41 @@ export function FindExchangePage() {
       console.error('Error finding matches:', err)
     } finally {
       setIsSearching(false)
+    }
+  }
+
+  const sendExchangeRequest = async (match: ExchangeMatch) => {
+    if (!ticketId || !currentTicket) return
+
+    setIsSending(true)
+    setError(null)
+
+    try {
+      await exchangeApi.sendRequest({
+        requesterTicketId: ticketId,
+        targetUserId: match.userId,
+        targetTicketId: match.ticketId,
+        giveSeats: currentTicket.passengers.map((p) => ({
+          passenger_id: p.id,
+          passenger_name: p.name,
+          coach: p.coach,
+          seat_number: p.seatNumber,
+          berth_type: p.berthType,
+        })),
+        receiveSeats: match.availableSeats.map((s) => ({
+          passenger_id: s.passengerId,
+          passenger_name: s.passengerName,
+          coach: s.coach,
+          seat_number: s.seatNumber,
+          berth_type: s.berthType,
+        })),
+        message: requestMessage.trim() || undefined,
+      })
+      navigate('/exchange/requests')
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to send exchange request')
+    } finally {
+      setIsSending(false)
     }
   }
 
@@ -317,10 +355,11 @@ export function FindExchangePage() {
                     <Button 
                       className="w-full" 
                       size="sm"
+                      isLoading={isSending}
                       onClick={(e) => {
                         e.stopPropagation()
-                        // TODO: Navigate to send exchange request
-                        console.log('Send exchange request to:', match.userId)
+                        setSelectedMatch(match)
+                        sendExchangeRequest(match)
                       }}
                     >
                       Send Exchange Request
@@ -416,13 +455,24 @@ export function FindExchangePage() {
                   </div>
                 </div>
                 
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Optional message to {selectedMatch.userName}
+                  </label>
+                  <textarea
+                    value={requestMessage}
+                    onChange={(e) => setRequestMessage(e.target.value)}
+                    rows={2}
+                    placeholder="Hi, would you like to exchange seats so our families can sit together?"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:border-primary-500 outline-none text-sm"
+                  />
+                </div>
+
                 <div className="flex flex-col sm:flex-row gap-3 mt-6">
                   <Button 
                     className="flex-1 w-full"
-                    onClick={() => {
-                      // TODO: Navigate to send exchange request
-                      console.log('Send exchange request to:', selectedMatch.userId)
-                    }}
+                    isLoading={isSending}
+                    onClick={() => sendExchangeRequest(selectedMatch)}
                   >
                     Send Exchange Request
                   </Button>

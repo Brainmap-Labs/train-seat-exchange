@@ -10,8 +10,15 @@ from app.core.security import get_admin_user
 from app.models.user import User
 from app.models.ticket import Ticket
 from app.models.match import MatchSuggestion
-from app.models.exchange import ExchangeRequest, ExchangeProposal, SeatInfo
+from app.models.exchange import ExchangeRequest
 from app.services.matching_service import MatchingService
+from app.services.exchange_service import (
+    create_exchange_request,
+    format_exchange_request,
+    get_exchange_for_user,
+    expire_request_if_needed,
+    ACTIVE_CHAT_STATUSES,
+)
 
 router = APIRouter()
 
@@ -21,6 +28,7 @@ class ExchangePreferences(BaseModel):
     berth_type_preferences: List[str] = []
 
 class SendExchangeRequest(BaseModel):
+    requester_ticket_id: str
     target_user_id: str
     target_ticket_id: str
     give_seats: List[dict]
@@ -384,161 +392,156 @@ async def send_exchange_request(
     request_data: SendExchangeRequest,
     current_user: User = Depends(get_current_user)
 ):
-    """Send an exchange request to another user"""
-    # Validate target user and ticket
-    target_user = await User.get(PydanticObjectId(request_data.target_user_id))
-    if not target_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Target user not found"
-        )
-    
-    target_ticket = await Ticket.get(PydanticObjectId(request_data.target_ticket_id))
-    if not target_ticket or target_ticket.user_id != target_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Target ticket not found"
-        )
-    
-    # Get requester's ticket (find by train and date)
-    requester_ticket = await Ticket.find_one(
-        Ticket.user_id == current_user.id,
-        Ticket.train_number == target_ticket.train_number,
-        Ticket.travel_date == target_ticket.travel_date
-    )
-    
-    if not requester_ticket:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You don't have a ticket for this train"
-        )
-    
-    # Create exchange proposal
-    proposal = ExchangeProposal(
-        give=[SeatInfo(**s) for s in request_data.give_seats],
-        receive=[SeatInfo(**s) for s in request_data.receive_seats],
-    )
-    
-    # Create exchange request
-    exchange_request = ExchangeRequest(
-        requester_id=current_user.id,
-        requester_ticket_id=requester_ticket.id,
-        target_user_id=target_user.id,
-        target_ticket_id=target_ticket.id,
-        train_number=target_ticket.train_number,
-        travel_date=target_ticket.travel_date,
-        proposal=proposal,
+    """Send an exchange request to another user on the same train."""
+    exchange_request = await create_exchange_request(
+        requester=current_user,
+        requester_ticket_id=request_data.requester_ticket_id,
+        target_user_id=request_data.target_user_id,
+        target_ticket_id=request_data.target_ticket_id,
+        give_seats=request_data.give_seats,
+        receive_seats=request_data.receive_seats,
         message=request_data.message,
     )
-    
-    await exchange_request.insert()
-    
-    # TODO: Send notification to target user
-    
+
     return {
         "message": "Exchange request sent successfully",
-        "request_id": str(exchange_request.id)
+        "request_id": str(exchange_request.id),
+        "request": await format_exchange_request(exchange_request, current_user.id),
     }
 
 @router.get("/requests")
 async def get_exchange_requests(current_user: User = Depends(get_current_user)):
-    """Get all exchange requests for current user"""
-    # Received requests
-    received = await ExchangeRequest.find(
+    """List exchange requests sent to or from the current user."""
+    received_raw = await ExchangeRequest.find(
         ExchangeRequest.target_user_id == current_user.id
-    ).to_list()
-    
-    # Sent requests
-    sent = await ExchangeRequest.find(
+    ).sort("-created_at").to_list()
+
+    sent_raw = await ExchangeRequest.find(
         ExchangeRequest.requester_id == current_user.id
-    ).to_list()
-    
-    async def format_request(req, is_received):
-        other_user_id = req.requester_id if is_received else req.target_user_id
-        other_user = await User.get(other_user_id)
-        return {
-            "id": str(req.id),
-            "other_user": {
-                "id": str(other_user.id),
-                "name": other_user.name,
-                "rating": other_user.rating,
-            } if other_user else None,
-            "train_number": req.train_number,
-            "travel_date": req.travel_date,
-            "proposal": req.proposal.model_dump(),
-            "status": req.status,
-            "message": req.message,
-            "created_at": req.created_at,
-        }
-    
-    return {
-        "received": [await format_request(r, True) for r in received],
-        "sent": [await format_request(r, False) for r in sent],
-    }
+    ).sort("-created_at").to_list()
+
+    received = []
+    for req in received_raw:
+        req = await expire_request_if_needed(req)
+        received.append(await format_exchange_request(req, current_user.id))
+
+    sent = []
+    for req in sent_raw:
+        req = await expire_request_if_needed(req)
+        sent.append(await format_exchange_request(req, current_user.id))
+
+    return {"received": received, "sent": sent}
+
+
+@router.get("/requests/{request_id}")
+async def get_exchange_request(
+    request_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Get a single exchange request (for detail view and chat header)."""
+    exchange_req = await get_exchange_for_user(request_id, current_user.id)
+    return await format_exchange_request(exchange_req, current_user.id)
+
+
+@router.post("/requests/{request_id}/cancel")
+async def cancel_exchange_request(
+    request_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Cancel a pending request (requester only)."""
+    exchange_req = await get_exchange_for_user(request_id, current_user.id)
+
+    if exchange_req.requester_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the requester can cancel this request",
+        )
+
+    if exchange_req.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot cancel request with status: {exchange_req.status}",
+        )
+
+    exchange_req.status = "declined"
+    exchange_req.updated_at = datetime.utcnow()
+    await exchange_req.save()
+
+    return {"message": "Exchange request cancelled", "status": exchange_req.status}
 
 @router.post("/requests/{request_id}/accept")
 async def accept_exchange_request(
     request_id: str,
     current_user: User = Depends(get_current_user)
 ):
-    """Accept an exchange request"""
-    exchange_req = await ExchangeRequest.get(PydanticObjectId(request_id))
-    
-    if not exchange_req or exchange_req.target_user_id != current_user.id:
+    """Accept an exchange request (target user only)."""
+    exchange_req = await get_exchange_for_user(request_id, current_user.id)
+
+    if exchange_req.target_user_id != current_user.id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Exchange request not found"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the recipient can accept this request",
         )
-    
+
     if exchange_req.status != "pending":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot accept request with status: {exchange_req.status}"
+            detail=f"Cannot accept request with status: {exchange_req.status}",
         )
-    
+
     exchange_req.status = "accepted"
     exchange_req.updated_at = datetime.utcnow()
     await exchange_req.save()
-    
-    # TODO: Notify requester
-    
-    return {"message": "Exchange request accepted"}
+
+    return {
+        "message": "Exchange request accepted",
+        "status": exchange_req.status,
+        "request": await format_exchange_request(exchange_req, current_user.id),
+    }
 
 @router.post("/requests/{request_id}/decline")
 async def decline_exchange_request(
     request_id: str,
     current_user: User = Depends(get_current_user)
 ):
-    """Decline an exchange request"""
-    exchange_req = await ExchangeRequest.get(PydanticObjectId(request_id))
-    
-    if not exchange_req or exchange_req.target_user_id != current_user.id:
+    """Decline an exchange request (target user only)."""
+    exchange_req = await get_exchange_for_user(request_id, current_user.id)
+
+    if exchange_req.target_user_id != current_user.id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Exchange request not found"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the recipient can decline this request",
         )
-    
+
+    if exchange_req.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot decline request with status: {exchange_req.status}",
+        )
+
     exchange_req.status = "declined"
     exchange_req.updated_at = datetime.utcnow()
     await exchange_req.save()
-    
-    return {"message": "Exchange request declined"}
+
+    return {
+        "message": "Exchange request declined",
+        "status": exchange_req.status,
+    }
 
 @router.post("/requests/{request_id}/complete")
 async def complete_exchange(
     request_id: str,
     current_user: User = Depends(get_current_user)
 ):
-    """Mark exchange as completed"""
-    exchange_req = await ExchangeRequest.get(PydanticObjectId(request_id))
-    
-    if not exchange_req:
+    """Confirm the physical seat exchange was completed (both parties must confirm)."""
+    exchange_req = await get_exchange_for_user(request_id, current_user.id)
+
+    if exchange_req.status not in ACTIVE_CHAT_STATUSES:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Exchange request not found"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot complete request with status: {exchange_req.status}",
         )
-    
-    # Check if current user is part of exchange
+
     if exchange_req.requester_id == current_user.id:
         exchange_req.requester_confirmed = True
     elif exchange_req.target_user_id == current_user.id:
@@ -546,14 +549,11 @@ async def complete_exchange(
     else:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized"
+            detail="Not authorized",
         )
-    
-    # If both confirmed, mark as completed
+
     if exchange_req.can_complete():
         exchange_req.status = "completed"
-        
-        # Update exchange counts for both users
         requester = await User.get(exchange_req.requester_id)
         target = await User.get(exchange_req.target_user_id)
         if requester:
@@ -562,14 +562,15 @@ async def complete_exchange(
         if target:
             target.total_exchanges += 1
             await target.save()
-    
+
     exchange_req.updated_at = datetime.utcnow()
     await exchange_req.save()
-    
+
     return {
         "message": "Confirmation recorded",
         "status": exchange_req.status,
         "requester_confirmed": exchange_req.requester_confirmed,
         "target_confirmed": exchange_req.target_confirmed,
+        "request": await format_exchange_request(exchange_req, current_user.id),
     }
 

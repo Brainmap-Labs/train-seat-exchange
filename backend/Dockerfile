@@ -1,10 +1,11 @@
 # Render Docker web service — set Root Directory to `backend` in Render dashboard
 FROM python:3.11-slim
 
-# System deps for Tesseract OCR (ticket image upload)
+# System deps for OCR (Tesseract + Poppler for PDF ticket upload)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     tesseract-ocr-eng \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
